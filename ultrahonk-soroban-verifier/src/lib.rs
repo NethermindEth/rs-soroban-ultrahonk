@@ -14,7 +14,10 @@ pub mod transcript;
 pub mod types;
 pub mod utils;
 pub mod verifier;
-pub const PROOF_FIELDS: usize = 456;
-pub const PROOF_BYTES: usize = PROOF_FIELDS * 32;
+// Proof size is dynamic based on log_n — use utils::expected_proof_fields(log_n)
 
+pub use ec::{EcOps, SorobanEc};
 pub use verifier::UltraHonkVerifier;
+
+#[cfg(feature = "std")]
+pub use ec::ArkEc;

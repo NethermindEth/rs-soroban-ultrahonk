@@ -110,6 +110,11 @@ pub fn verify_sumcheck(
         let round_univariate = &proof.sumcheck_univariates[round];
 
         if !check_sum(round_univariate, round_target) {
+            crate::trace!("===== SUMCHECK ROUND {} FAILED =====", round);
+            crate::trace!("  target = 0x{}", hex::encode(round_target.to_bytes()));
+            crate::trace!("  u[0]   = 0x{}", hex::encode(round_univariate[0].to_bytes()));
+            crate::trace!("  u[1]   = 0x{}", hex::encode(round_univariate[1].to_bytes()));
+            crate::trace!("  sum    = 0x{}", hex::encode((round_univariate[0] + round_univariate[1]).to_bytes()));
             return Err("round failed");
         }
 

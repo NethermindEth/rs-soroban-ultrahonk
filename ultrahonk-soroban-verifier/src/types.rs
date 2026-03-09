@@ -1,10 +1,10 @@
 use crate::field::Fr;
 
 pub const CONST_PROOF_SIZE_LOG_N: usize = 28;
-pub const NUMBER_OF_SUBRELATIONS: usize = 26;
+pub const NUMBER_OF_SUBRELATIONS: usize = 28;
 pub const BATCHED_RELATION_PARTIAL_LENGTH: usize = 8;
-pub const NUMBER_OF_ENTITIES: usize = 40;
-pub const NUMBER_UNSHIFTED: usize = 35;
+pub const NUMBER_OF_ENTITIES: usize = 41;
+pub const NUMBER_UNSHIFTED: usize = 36;
 pub const NUMBER_TO_BE_SHIFTED: usize = 5;
 pub const PAIRING_POINTS_SIZE: usize = 16;
 pub const NUMBER_OF_ALPHAS: usize = NUMBER_OF_SUBRELATIONS - 1;
@@ -22,36 +22,37 @@ pub enum Wire {
     QArith = 7,
     QRange = 8,
     QElliptic = 9,
-    QAux = 10,
-    QPoseidon2External = 11,
-    QPoseidon2Internal = 12,
-    Sigma1 = 13,
-    Sigma2 = 14,
-    Sigma3 = 15,
-    Sigma4 = 16,
-    Id1 = 17,
-    Id2 = 18,
-    Id3 = 19,
-    Id4 = 20,
-    Table1 = 21,
-    Table2 = 22,
-    Table3 = 23,
-    Table4 = 24,
-    LagrangeFirst = 25,
-    LagrangeLast = 26,
-    Wl = 27,
-    Wr = 28,
-    Wo = 29,
-    W4 = 30,
-    ZPerm = 31,
-    LookupInverses = 32,
-    LookupReadCounts = 33,
-    LookupReadTags = 34,
-    WlShift = 35,
-    WrShift = 36,
-    WoShift = 37,
-    W4Shift = 38,
-    ZPermShift = 39,
+    QMemory = 10,
+    QNnf = 11,
+    QPoseidon2External = 12,
+    QPoseidon2Internal = 13,
+    Sigma1 = 14,
+    Sigma2 = 15,
+    Sigma3 = 16,
+    Sigma4 = 17,
+    Id1 = 18,
+    Id2 = 19,
+    Id3 = 20,
+    Id4 = 21,
+    Table1 = 22,
+    Table2 = 23,
+    Table3 = 24,
+    Table4 = 25,
+    LagrangeFirst = 26,
+    LagrangeLast = 27,
+    Wl = 28,
+    Wr = 29,
+    Wo = 30,
+    W4 = 31,
+    ZPerm = 32,
+    LookupInverses = 33,
+    LookupReadCounts = 34,
+    LookupReadTags = 35,
+    WlShift = 36,
+    WrShift = 37,
+    WoShift = 38,
+    W4Shift = 39,
+    ZPermShift = 40,
 }
 
 impl Wire {
@@ -115,7 +116,8 @@ pub struct VerificationKey {
     pub circuit_size: u64,
     pub log_circuit_size: u64,
     pub public_inputs_size: u64,
-    // Selectors and wire commitments:
+    pub pub_inputs_offset: u64,
+    // Selectors and wire commitments (binary VK order = wire enum order):
     pub qm: G1Point,
     pub qc: G1Point,
     pub ql: G1Point,
@@ -126,7 +128,8 @@ pub struct VerificationKey {
     pub q_arith: G1Point,
     pub q_delta_range: G1Point,
     pub q_elliptic: G1Point,
-    pub q_aux: G1Point,
+    pub q_memory: G1Point,
+    pub q_nnf: G1Point,
     pub q_poseidon2_external: G1Point,
     pub q_poseidon2_internal: G1Point,
     // Copy constraints:
@@ -146,6 +149,8 @@ pub struct VerificationKey {
     // Fixed first/last
     pub lagrange_first: G1Point,
     pub lagrange_last: G1Point,
+    // VK hash (computed externally, not part of binary VK)
+    pub vk_hash: [u8; 32],
 }
 
 /// The Proof structure

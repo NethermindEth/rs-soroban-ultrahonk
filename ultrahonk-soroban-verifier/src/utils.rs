@@ -5,22 +5,12 @@ use crate::types::{
     G1Point, Proof, VerificationKey, BATCHED_RELATION_PARTIAL_LENGTH, CONST_PROOF_SIZE_LOG_N,
     NUMBER_OF_ENTITIES, PAIRING_POINTS_SIZE,
 };
-use crate::PROOF_BYTES;
 use core::array;
 use soroban_sdk::Bytes;
 
 /// Convert a 32-byte big-endian array into an Fr.
 fn bytes32_to_fr(bytes: &[u8; 32]) -> Fr {
     Fr::from_bytes(bytes)
-}
-
-/// Split a 32-byte big-endian field element into (low136, high) limbs.
-pub fn coord_to_halves_be(coord: &[u8; 32]) -> ([u8; 32], [u8; 32]) {
-    let mut low = [0u8; 32];
-    let mut high = [0u8; 32];
-    low[15..].copy_from_slice(&coord[15..]); // 17 bytes
-    high[17..].copy_from_slice(&coord[..15]); // 15 bytes
-    (low, high)
 }
 
 fn read_bytes<const N: usize>(bytes: &Bytes, idx: &mut u32) -> [u8; N] {
@@ -31,81 +21,90 @@ fn read_bytes<const N: usize>(bytes: &Bytes, idx: &mut u32) -> [u8; N] {
     out
 }
 
-fn combine_limbs(lo: &[u8; 32], hi: &[u8; 32]) -> [u8; 32] {
-    let mut out = [0u8; 32];
-    out[..15].copy_from_slice(&hi[17..]);
-    out[15..].copy_from_slice(&lo[15..]);
-    out
+/// Public version of read_bytes for use by transcript.
+pub fn read_bytes_pub<const N: usize>(bytes: &Bytes, idx: &mut u32) -> [u8; N] {
+    read_bytes(bytes, idx)
+}
+
+/// Compute expected proof size in 32-byte fields for a given log_n (non-ZK format).
+pub fn expected_proof_fields(log_n: usize) -> usize {
+    PAIRING_POINTS_SIZE              // pairing point object
+    + 8 * 2                          // 8 witness G1 points × 2 fields each
+    + log_n * BATCHED_RELATION_PARTIAL_LENGTH  // sumcheck univariates
+    + NUMBER_OF_ENTITIES             // sumcheck evaluations
+    + (log_n - 1) * 2               // gemini fold commitments
+    + log_n                          // gemini a evaluations
+    + 2 * 2                          // shplonk_q + kzg_quotient
 }
 
 /// Load a Proof from a byte array.
 ///
-/// Note (bb v0.87.0): G1 coordinates are encoded as two limbs per coordinate
-/// using the (lo136, hi<=118) split and stored in the order (x_lo, x_hi, y_lo, y_hi).
-pub fn load_proof(proof_bytes: &Bytes) -> Proof {
-    assert_eq!(proof_bytes.len() as usize, PROOF_BYTES, "proof bytes len");
+/// bb 3.0 format: G1 points are plain (x, y) — 64 bytes each.
+/// Proof size is dynamic based on log_n.
+pub fn load_proof(proof_bytes: &Bytes, log_n: usize) -> Proof {
+    let expected = expected_proof_fields(log_n) * 32;
+    assert_eq!(proof_bytes.len() as usize, expected, "proof bytes len");
     let mut boundary = 0u32;
 
-    fn bytes_to_g1_proof_point(bytes: &Bytes, cur: &mut u32) -> G1Point {
-        let x0 = read_bytes::<32>(bytes, cur);
-        let x1 = read_bytes::<32>(bytes, cur);
-        let y0 = read_bytes::<32>(bytes, cur);
-        let y1 = read_bytes::<32>(bytes, cur);
-        let x = combine_limbs(&x0, &x1);
-        let y = combine_limbs(&y0, &y1);
+    fn read_g1(bytes: &Bytes, cur: &mut u32) -> G1Point {
+        let x = read_bytes::<32>(bytes, cur);
+        let y = read_bytes::<32>(bytes, cur);
         G1Point { x, y }
     }
 
-    // Helper: bytesToFr (read next 32 bytes as Fr)
-    fn bytes_to_fr(bytes: &Bytes, cur: &mut u32) -> Fr {
+    fn read_fr(bytes: &Bytes, cur: &mut u32) -> Fr {
         let arr = read_bytes::<32>(bytes, cur);
         bytes32_to_fr(&arr)
     }
 
     // 0) pairing point object
     let pairing_point_object: [Fr; PAIRING_POINTS_SIZE] =
-        array::from_fn(|_| bytes_to_fr(proof_bytes, &mut boundary));
+        array::from_fn(|_| read_fr(proof_bytes, &mut boundary));
 
     // 1) w1, w2, w3
-    let w1 = bytes_to_g1_proof_point(proof_bytes, &mut boundary);
-    let w2 = bytes_to_g1_proof_point(proof_bytes, &mut boundary);
-    let w3 = bytes_to_g1_proof_point(proof_bytes, &mut boundary);
+    let w1 = read_g1(proof_bytes, &mut boundary);
+    let w2 = read_g1(proof_bytes, &mut boundary);
+    let w3 = read_g1(proof_bytes, &mut boundary);
 
     // 2) lookup_read_counts, lookup_read_tags
-    let lookup_read_counts = bytes_to_g1_proof_point(proof_bytes, &mut boundary);
-    let lookup_read_tags = bytes_to_g1_proof_point(proof_bytes, &mut boundary);
+    let lookup_read_counts = read_g1(proof_bytes, &mut boundary);
+    let lookup_read_tags = read_g1(proof_bytes, &mut boundary);
 
     // 3) w4
-    let w4 = bytes_to_g1_proof_point(proof_bytes, &mut boundary);
+    let w4 = read_g1(proof_bytes, &mut boundary);
 
     // 4) lookup_inverses, z_perm
-    let lookup_inverses = bytes_to_g1_proof_point(proof_bytes, &mut boundary);
-    let z_perm = bytes_to_g1_proof_point(proof_bytes, &mut boundary);
+    let lookup_inverses = read_g1(proof_bytes, &mut boundary);
+    let z_perm = read_g1(proof_bytes, &mut boundary);
 
-    // 5) sumcheck_univariates
+    // 5) sumcheck_univariates (only log_n rounds)
     let mut sumcheck_univariates =
         [[Fr::zero(); BATCHED_RELATION_PARTIAL_LENGTH]; CONST_PROOF_SIZE_LOG_N];
-    for r in 0..CONST_PROOF_SIZE_LOG_N {
+    for r in 0..log_n {
         for i in 0..BATCHED_RELATION_PARTIAL_LENGTH {
-            sumcheck_univariates[r][i] = bytes_to_fr(proof_bytes, &mut boundary);
+            sumcheck_univariates[r][i] = read_fr(proof_bytes, &mut boundary);
         }
     }
 
     // 6) sumcheck_evaluations
     let sumcheck_evaluations: [Fr; NUMBER_OF_ENTITIES] =
-        array::from_fn(|_| bytes_to_fr(proof_bytes, &mut boundary));
+        array::from_fn(|_| read_fr(proof_bytes, &mut boundary));
 
-    // 7) gemini_fold_comms
-    let gemini_fold_comms: [G1Point; CONST_PROOF_SIZE_LOG_N - 1] =
-        array::from_fn(|_| bytes_to_g1_proof_point(proof_bytes, &mut boundary));
+    // 7) gemini_fold_comms (only log_n - 1)
+    let mut gemini_fold_comms = [G1Point::infinity(); CONST_PROOF_SIZE_LOG_N - 1];
+    for i in 0..(log_n - 1) {
+        gemini_fold_comms[i] = read_g1(proof_bytes, &mut boundary);
+    }
 
-    // 8) gemini_a_evaluations
-    let gemini_a_evaluations: [Fr; CONST_PROOF_SIZE_LOG_N] =
-        array::from_fn(|_| bytes_to_fr(proof_bytes, &mut boundary));
+    // 8) gemini_a_evaluations (only log_n)
+    let mut gemini_a_evaluations = [Fr::zero(); CONST_PROOF_SIZE_LOG_N];
+    for i in 0..log_n {
+        gemini_a_evaluations[i] = read_fr(proof_bytes, &mut boundary);
+    }
 
     // 9) shplonk_q, kzg_quotient
-    let shplonk_q = bytes_to_g1_proof_point(proof_bytes, &mut boundary);
-    let kzg_quotient = bytes_to_g1_proof_point(proof_bytes, &mut boundary);
+    let shplonk_q = read_g1(proof_bytes, &mut boundary);
+    let kzg_quotient = read_g1(proof_bytes, &mut boundary);
 
     Proof {
         pairing_point_object,
@@ -127,29 +126,33 @@ pub fn load_proof(proof_bytes: &Bytes) -> Proof {
 }
 
 /// Load a VerificationKey.
+///
+/// bb 3.0 format: 3 × Fr header (log_circuit_size, num_public_inputs, pub_inputs_offset)
+/// followed by 28 G1 commitment points (64 bytes each).
 pub fn load_vk_from_bytes(bytes: &Bytes) -> Option<VerificationKey> {
-    const HEADER_WORDS: usize = 4;
-    const NUM_POINTS: usize = 27;
-    const EXPECTED_LEN: usize = HEADER_WORDS * 8 + NUM_POINTS * 64;
+    const HEADER_FRS: usize = 3;
+    const NUM_POINTS: usize = 28;
+    const EXPECTED_LEN: usize = HEADER_FRS * 32 + NUM_POINTS * 64;
     if bytes.len() as usize != EXPECTED_LEN {
         return None;
     }
 
-    fn read_u64(bytes: &Bytes, idx: &mut u32) -> u64 {
-        u64::from_be_bytes(read_bytes::<8>(bytes, idx))
+    fn read_fr_as_u64(bytes: &Bytes, idx: &mut u32) -> u64 {
+        let arr = read_bytes::<32>(bytes, idx);
+        // Fr is big-endian; value fits in u64
+        u64::from_be_bytes([arr[24], arr[25], arr[26], arr[27], arr[28], arr[29], arr[30], arr[31]])
     }
     fn read_point(bytes: &Bytes, idx: &mut u32) -> Option<G1Point> {
         let x = read_bytes::<32>(bytes, idx);
         let y = read_bytes::<32>(bytes, idx);
-        // Curve, subgroup checks are executed in the Soroban host.
         Some(G1Point { x, y })
     }
 
     let mut idx = 0u32;
-    let circuit_size = read_u64(bytes, &mut idx);
-    let log_circuit_size = read_u64(bytes, &mut idx);
-    let public_inputs_size = read_u64(bytes, &mut idx);
-    let _pub_inputs_offset = read_u64(bytes, &mut idx);
+    let log_circuit_size = read_fr_as_u64(bytes, &mut idx);
+    let public_inputs_size = read_fr_as_u64(bytes, &mut idx);
+    let pub_inputs_offset = read_fr_as_u64(bytes, &mut idx);
+    let circuit_size = 1u64 << log_circuit_size;
 
     let qm = read_point(bytes, &mut idx)?;
     let qc = read_point(bytes, &mut idx)?;
@@ -161,7 +164,8 @@ pub fn load_vk_from_bytes(bytes: &Bytes) -> Option<VerificationKey> {
     let q_arith = read_point(bytes, &mut idx)?;
     let q_delta_range = read_point(bytes, &mut idx)?;
     let q_elliptic = read_point(bytes, &mut idx)?;
-    let q_aux = read_point(bytes, &mut idx)?;
+    let q_memory = read_point(bytes, &mut idx)?;
+    let q_nnf = read_point(bytes, &mut idx)?;
     let q_poseidon2_external = read_point(bytes, &mut idx)?;
     let q_poseidon2_internal = read_point(bytes, &mut idx)?;
     let s1 = read_point(bytes, &mut idx)?;
@@ -183,6 +187,7 @@ pub fn load_vk_from_bytes(bytes: &Bytes) -> Option<VerificationKey> {
         circuit_size,
         log_circuit_size,
         public_inputs_size,
+        pub_inputs_offset,
         qm,
         qc,
         ql,
@@ -193,7 +198,8 @@ pub fn load_vk_from_bytes(bytes: &Bytes) -> Option<VerificationKey> {
         q_arith,
         q_delta_range,
         q_elliptic,
-        q_aux,
+        q_memory,
+        q_nnf,
         q_poseidon2_external,
         q_poseidon2_internal,
         s1,
@@ -210,5 +216,6 @@ pub fn load_vk_from_bytes(bytes: &Bytes) -> Option<VerificationKey> {
         t4,
         lagrange_first,
         lagrange_last,
+        vk_hash: [0u8; 32], // set externally by the verifier
     })
 }

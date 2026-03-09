@@ -1,17 +1,15 @@
 //! Shplemini batch-opening verifier for BN254
-use crate::ec::helpers::negate;
-use crate::ec::{g1_msm, pairing_check};
+use crate::ec::EcOps;
 use crate::field::{batch_inverse, Fr};
 use crate::trace;
 use crate::types::{
     G1Point, Proof, Transcript, VerificationKey, CONST_PROOF_SIZE_LOG_N, NUMBER_OF_ENTITIES,
     NUMBER_TO_BE_SHIFTED, NUMBER_UNSHIFTED,
 };
-use soroban_sdk::Env;
 
-/// Shplemini verification
-pub fn verify_shplemini(
-    env: &Env,
+/// Shplemini verification, generic over the EC backend.
+pub fn verify_shplemini<E: EcOps>(
+    ec: &E,
     proof: &Proof,
     vk: &VerificationKey,
     tp: &Transcript,
@@ -126,13 +124,12 @@ pub fn verify_shplemini(
         push!(qr);
         push!(qo);
         push!(q4);
-        // Match Solidity VK commitment order strictly
-        // 7..13: qLookup, qArith, qDeltaRange, qElliptic, qAux, qPoseidon2External, qPoseidon2Internal
         push!(q_lookup);
         push!(q_arith);
         push!(q_delta_range);
         push!(q_elliptic);
-        push!(q_aux);
+        push!(q_memory);
+        push!(q_nnf);
         push!(q_poseidon2_external);
         push!(q_poseidon2_internal);
         push!(s1);
@@ -231,9 +228,9 @@ pub fn verify_shplemini(
     scalars[q_idx] = tp.shplonk_z;
 
     // 12) MSM + pairing
-    let p0 = g1_msm(env, &coms, &scalars)?;
-    let p1 = negate(env, &proof.kzg_quotient);
-    if pairing_check(env, &p0, &p1) {
+    let p0 = ec.msm(&coms, &scalars)?;
+    let p1 = ec.negate(&proof.kzg_quotient);
+    if ec.pairing_check(&p0, &p1) {
         Ok(())
     } else {
         Err("Shplonk pairing check failed")

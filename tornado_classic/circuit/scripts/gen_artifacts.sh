@@ -7,14 +7,16 @@ REPO_ROOT="$(cd "${PROJECT_ROOT}/../.." && pwd)"
 export PATH="$HOME/.nargo/bin:$HOME/.bb/bin:${SCRIPT_DIR}:${PATH}"
 cd "${PROJECT_ROOT}"
 
-REQUIRED_NARGO_VERSION="1.0.0-beta.9"
-REQUIRED_BB_VERSION="v0.87.0"
+REQUIRED_NARGO_VERSION="1.0.0-beta.18"
 
 install_nargo() {
   if ! command -v nargo >/dev/null 2>&1; then
     echo "• installing nargo ${REQUIRED_NARGO_VERSION}"
     curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | \
       NOIR_VERSION="${REQUIRED_NARGO_VERSION}" bash
+    export PATH="$HOME/.nargo/bin:$PATH"
+    [ -n "${GITHUB_PATH:-}" ] && echo "$HOME/.nargo/bin" >> "$GITHUB_PATH"
+
     noirup -v "${REQUIRED_NARGO_VERSION}"
   fi
 }
@@ -22,22 +24,12 @@ install_nargo() {
 install_bb() {
   if command -v bb >/dev/null 2>&1; then return; fi
 
-  echo "• installing bb ${REQUIRED_BB_VERSION}"
-  mkdir -p "$HOME/.bb/bin"
+  echo "• installing bb (compatible with nargo ${REQUIRED_NARGO_VERSION})"
+  curl -L https://raw.githubusercontent.com/AztecProtocol/aztec-packages/master/barretenberg/bbup/install | bash
+  export PATH="$HOME/.bb:$PATH"
+  [ -n "${GITHUB_PATH:-}" ] && echo "$HOME/.bb" >> "$GITHUB_PATH"
 
-  uname_s=$(uname -s | tr '[:upper:]' '[:lower:]')
-  uname_m=$(uname -m)
-  case "${uname_s}_${uname_m}" in
-    linux_x86_64)  file="barretenberg-amd64-linux.tar.gz" ;;
-    darwin_arm64)  file="barretenberg-arm64-darwin.tar.gz" ;;
-    darwin_x86_64) file="barretenberg-amd64-darwin.tar.gz" ;;
-    *)             echo "unsupported platform"; exit 1 ;;
-  esac
-
-  url="https://github.com/AztecProtocol/aztec-packages/releases/download/${REQUIRED_BB_VERSION}/${file}"
-  curl -L "$url" -o /tmp/bb.tar.gz
-  tar -xzf /tmp/bb.tar.gz -C "$HOME/.bb/bin"
-  chmod +x "$HOME/.bb/bin/bb"
+  bbup -nv "${REQUIRED_NARGO_VERSION}"
 }
 
 install_nargo
@@ -71,12 +63,6 @@ if [[ "${NARGO_VERSION_RAW}" != *"${REQUIRED_NARGO_VERSION}"* ]]; then
   exit 1
 fi
 
-BB_VERSION_RAW="$(${BB_BIN} --version 2>/dev/null | head -n1)"
-if [[ "${BB_VERSION_RAW}" != "${REQUIRED_BB_VERSION}" && "v${BB_VERSION_RAW}" != "${REQUIRED_BB_VERSION}" ]]; then
-  echo "[!] Expected bb ${REQUIRED_BB_VERSION}, but got '${BB_VERSION_RAW}'" >&2
-  exit 1
-fi
-
 echo "[1/4] nargo compile"
 "${NARGO_BIN}" compile
 
@@ -102,34 +88,25 @@ if [[ ! -f "${WIT}" ]]; then
   exit 1
 fi
 
-echo "[3/4] bb write_vk --scheme ultra_honk --oracle_hash keccak"
-rm -rf target/vk_fields.json target/vk
+echo "[3/4] bb write_vk --verifier_target evm"
+rm -rf target/vk
 "${BB_BIN}" write_vk \
-  --scheme ultra_honk \
-  --oracle_hash keccak \
+  --verifier_target evm \
   --bytecode_path "${ACIR}" \
-  --output_format bytes_and_fields \
   --output_path target
 
 # bb may write directories; flatten to files.
-if [[ -d target/vk_fields.json && -f target/vk_fields.json/vk_fields.json ]]; then
-  mv target/vk_fields.json/vk_fields.json target/vk_fields.json.tmp
-  rmdir target/vk_fields.json
-  mv target/vk_fields.json.tmp target/vk_fields.json
-fi
 if [[ -d target/vk && -f target/vk/vk ]]; then
   mv target/vk/vk target/vk.tmp
   rmdir target/vk
   mv target/vk.tmp target/vk
 fi
 
-echo "[4/4] bb prove --scheme ultra_honk --oracle_hash keccak --output_format bytes_and_fields"
+echo "[4/4] bb prove --verifier_target evm"
 "${BB_BIN}" prove \
-  --scheme ultra_honk \
-  --oracle_hash keccak \
+  --verifier_target evm \
   --bytecode_path "${ACIR}" \
   --witness_path "${WIT}" \
-  --output_format bytes_and_fields \
   --output_path target
 
 echo "[ok] Artifacts generated under ./target:"

@@ -1,15 +1,21 @@
 //!
 //! This module accumulates all of the UltraHonk relations (arithmetic, permutation,
-//! lookup, range, elliptic, auxiliary, Poseidon external/internal) into a single
-//! scalar which is then batched with the alpha challenges.
+//! lookup, range, elliptic, memory, non-native-field, Poseidon external/internal) into
+//! a single scalar which is then batched with the alpha challenges.
+//!
+//! Subrelation index mapping (bb 3.0):
+//!   0-1:   arithmetic
+//!   2-3:   permutation
+//!   4-6:   lookup log-derivative
+//!   7-10:  delta range
+//!   11-12: elliptic
+//!   13-18: memory
+//!   19:    non-native field
+//!   20-23: poseidon external
+//!   24-27: poseidon internal
 
 use crate::field::Fr;
 use crate::types::{RelationParameters, Wire, NUMBER_OF_SUBRELATIONS};
-
-#[cfg(feature = "std")]
-macro_rules! println {
-    ($($args:tt)*) => { std::println!($($args)*) };
-}
 
 /// Precomputed NEG_HALF = (p - 1)/2 in BN254 scalar field.
 fn neg_half() -> Fr {
@@ -105,7 +111,7 @@ fn accumulate_permutation_relation(
     }
 }
 
-/// Accumulate the two lookup log-derivative subrelations (indices 4 and 5).
+/// Accumulate the three lookup log-derivative subrelations (indices 4, 5, 6).
 fn accumulate_log_derivative_lookup_relation(
     p: &[Fr],
     rp: &RelationParameters,
@@ -118,12 +124,12 @@ fn accumulate_log_derivative_lookup_relation(
         + wire(p, Wire::Table3) * rp.eta_two
         + wire(p, Wire::Table4) * rp.eta_three;
 
+    let derived_entry_1 =
+        wire(p, Wire::Wl) + rp.gamma + wire(p, Wire::Qr) * wire(p, Wire::WlShift);
     let derived_entry_2 = wire(p, Wire::Wr) + wire(p, Wire::Qm) * wire(p, Wire::WrShift);
     let derived_entry_3 = wire(p, Wire::Wo) + wire(p, Wire::Qc) * wire(p, Wire::WoShift);
 
-    let read_term = wire(p, Wire::Wl)
-        + rp.gamma
-        + wire(p, Wire::Qr) * wire(p, Wire::WlShift)
+    let read_term = derived_entry_1
         + derived_entry_2 * rp.eta
         + derived_entry_3 * rp.eta_two
         + wire(p, Wire::Qo) * rp.eta_three;
@@ -132,12 +138,17 @@ fn accumulate_log_derivative_lookup_relation(
     let inv_exists = wire(p, Wire::LookupReadTags) + wire(p, Wire::QLookup)
         - wire(p, Wire::LookupReadTags) * wire(p, Wire::QLookup);
 
+    // Contribution 4: inverse correctness
     evals[4] = (read_term * write_term * inv - inv_exists) * domain_sep;
-    evals[5] = wire(p, Wire::QLookup) * (write_term * inv)
-        - wire(p, Wire::LookupReadCounts) * (read_term * inv);
+    // Contribution 5: lookup accumulation
+    evals[5] = wire(p, Wire::QLookup) * (inv * write_term)
+        - wire(p, Wire::LookupReadCounts) * (inv * read_term);
+    // Contribution 6: read_tag boolean check (new in bb 3.0)
+    let read_tag = wire(p, Wire::LookupReadTags);
+    evals[6] = (read_tag * read_tag - read_tag) * domain_sep;
 }
 
-/// Accumulate the four range-check subrelations (indices 6..9).
+/// Accumulate the four range-check subrelations (indices 7..10).
 fn accumulate_delta_range_relation(p: &[Fr], evals: &mut [Fr], domain_sep: Fr) {
     let minus_one = Fr::zero() - Fr::from_u64(1);
     let minus_two = Fr::zero() - Fr::from_u64(2);
@@ -150,17 +161,17 @@ fn accumulate_delta_range_relation(p: &[Fr], evals: &mut [Fr], domain_sep: Fr) {
     let deltas = [delta_1, delta_2, delta_3, delta_4];
     let negs = [minus_one, minus_two, minus_three];
 
-    // Contributions 6..9
+    // Contributions 7..10
     for i in 0..4 {
         let mut acc = deltas[i];
         for &n in &negs {
             acc = acc * (deltas[i] + n);
         }
-        evals[6 + i] = acc * wire(p, Wire::QRange) * domain_sep;
+        evals[7 + i] = acc * wire(p, Wire::QRange) * domain_sep;
     }
 }
 
-/// Accumulate elliptic-curve subrelations (indices 10..11).
+/// Accumulate elliptic-curve subrelations (indices 11..12).
 fn accumulate_elliptic_relation(p: &[Fr], evals: &mut [Fr], domain_sep: Fr) {
     let x1 = wire(p, Wire::Wr);
     let y1 = wire(p, Wire::Wo);
@@ -203,19 +214,91 @@ fn accumulate_elliptic_relation(p: &[Fr], evals: &mut [Fr], domain_sep: Fr) {
     let add_factor = (Fr::one() - q_double) * q_gate * domain_sep;
     let double_factor = q_double * q_gate * domain_sep;
 
-    // Contribution 10: elliptic x
-    evals[10] = x_add_id * add_factor + x_double_id * double_factor;
-    // Contribution 11: elliptic y
-    evals[11] = y_add_id * add_factor + y_double_id * double_factor;
+    // Contribution 11: elliptic x
+    evals[11] = x_add_id * add_factor + x_double_id * double_factor;
+    // Contribution 12: elliptic y
+    evals[12] = y_add_id * add_factor + y_double_id * double_factor;
 }
 
-/// Accumulate auxiliary subrelations (indices 12..17).
-fn accumulate_auxillary_relation(
+/// Accumulate memory subrelations (indices 13..18).
+/// Replaces the memory part of the old auxiliary relation, using QMemory selector.
+fn accumulate_memory_relation(
     p: &[Fr],
     rp: &RelationParameters,
     evals: &mut [Fr],
     domain_sep: Fr,
 ) {
+    let mut memory_record_check = wire(p, Wire::Wo) * rp.eta_three
+        + wire(p, Wire::Wr) * rp.eta_two
+        + wire(p, Wire::Wl) * rp.eta
+        + wire(p, Wire::Qc);
+    let partial_record_check = memory_record_check;
+    memory_record_check = memory_record_check - wire(p, Wire::W4);
+
+    let index_delta = wire(p, Wire::WlShift) - wire(p, Wire::Wl);
+    let record_delta = wire(p, Wire::W4Shift) - wire(p, Wire::W4);
+
+    let index_is_monotonically_increasing = index_delta * index_delta - index_delta;
+    let adjacent_values_match_if_adjacent_indices_match = (Fr::one() - index_delta) * record_delta;
+
+    // Contribution 14: ROM adjacent values
+    evals[14] = adjacent_values_match_if_adjacent_indices_match
+        * wire(p, Wire::Ql)
+        * wire(p, Wire::Qr)
+        * wire(p, Wire::QMemory)
+        * domain_sep;
+    // Contribution 15: ROM index monotonic
+    evals[15] = index_is_monotonically_increasing
+        * wire(p, Wire::Ql)
+        * wire(p, Wire::Qr)
+        * wire(p, Wire::QMemory)
+        * domain_sep;
+
+    let access_type = wire(p, Wire::W4) - partial_record_check;
+    let access_check = access_type * access_type - access_type;
+
+    let mut next_gate_access_type = wire(p, Wire::WoShift) * rp.eta_three
+        + wire(p, Wire::WrShift) * rp.eta_two
+        + wire(p, Wire::WlShift) * rp.eta;
+    next_gate_access_type = wire(p, Wire::W4Shift) - next_gate_access_type;
+
+    let value_delta = wire(p, Wire::WoShift) - wire(p, Wire::Wo);
+    let adjacent_values_match_if_adjacent_indices_match_and_next_access_is_a_read_operation =
+        (Fr::one() - index_delta) * value_delta * (Fr::one() - next_gate_access_type);
+
+    // Contributions 16, 17, 18: RAM (using Q_O selector instead of old QArith)
+    evals[16] = adjacent_values_match_if_adjacent_indices_match_and_next_access_is_a_read_operation
+        * wire(p, Wire::Qo)
+        * wire(p, Wire::QMemory)
+        * domain_sep;
+    evals[17] = index_is_monotonically_increasing
+        * wire(p, Wire::Qo)
+        * wire(p, Wire::QMemory)
+        * domain_sep;
+    evals[18] = (next_gate_access_type * next_gate_access_type - next_gate_access_type)
+        * wire(p, Wire::Qo)
+        * wire(p, Wire::QMemory)
+        * domain_sep;
+
+    let rom_consistency_check_identity =
+        memory_record_check * wire(p, Wire::Ql) * wire(p, Wire::Qr);
+    let ram_timestamp_check_identity = (Fr::one() - index_delta)
+        * (wire(p, Wire::WrShift) - wire(p, Wire::Wr))
+        - wire(p, Wire::Wo);
+    let ram_consistency_check_identity = access_check * wire(p, Wire::Qo);
+
+    let memory_identity = rom_consistency_check_identity
+        + ram_timestamp_check_identity * wire(p, Wire::Q4) * wire(p, Wire::Ql)
+        + memory_record_check * wire(p, Wire::Qm) * wire(p, Wire::Ql)
+        + ram_consistency_check_identity;
+
+    // Contribution 13: combined memory identity
+    evals[13] = memory_identity * wire(p, Wire::QMemory) * domain_sep;
+}
+
+/// Accumulate non-native field subrelation (index 19).
+/// Replaces the NNF part of the old auxiliary relation, using QNnf selector.
+fn accumulate_nnf_relation(p: &[Fr], evals: &mut [Fr], domain_sep: Fr) {
     fn limb_size() -> Fr {
         Fr::from_str("0x100000000000000000")
     }
@@ -261,76 +344,13 @@ fn accumulate_auxillary_relation(
 
     let limb_accumulator_identity = (limb_accumulator_1 + limb_accumulator_2) * wire(p, Wire::Qo);
 
-    let mut memory_record_check = wire(p, Wire::Wo) * rp.eta_three
-        + wire(p, Wire::Wr) * rp.eta_two
-        + wire(p, Wire::Wl) * rp.eta
-        + wire(p, Wire::Qc);
-    let partial_record_check = memory_record_check;
-    memory_record_check = memory_record_check - wire(p, Wire::W4);
+    let nnf_identity = non_native_field_identity + limb_accumulator_identity;
 
-    let index_delta = wire(p, Wire::WlShift) - wire(p, Wire::Wl);
-    let record_delta = wire(p, Wire::W4Shift) - wire(p, Wire::W4);
-
-    let index_is_monotonically_increasing = index_delta * index_delta - index_delta;
-    let adjacent_values_match_if_adjacent_indices_match = (Fr::one() - index_delta) * record_delta;
-
-    evals[13] = adjacent_values_match_if_adjacent_indices_match
-        * wire(p, Wire::Ql)
-        * wire(p, Wire::Qr)
-        * wire(p, Wire::QAux)
-        * domain_sep;
-    // Contribution 14: ROM index monotonic
-    evals[14] = index_is_monotonically_increasing
-        * wire(p, Wire::Ql)
-        * wire(p, Wire::Qr)
-        * wire(p, Wire::QAux)
-        * domain_sep;
-
-    let access_type = wire(p, Wire::W4) - partial_record_check;
-    let access_check = access_type * access_type - access_type;
-
-    let mut next_gate_access_type = wire(p, Wire::WoShift) * rp.eta_three
-        + wire(p, Wire::WrShift) * rp.eta_two
-        + wire(p, Wire::WlShift) * rp.eta;
-    next_gate_access_type = wire(p, Wire::W4Shift) - next_gate_access_type;
-
-    let value_delta = wire(p, Wire::WoShift) - wire(p, Wire::Wo);
-    let adjacent_values_match_if_adjacent_indices_match_and_next_access_is_a_read_operation =
-        (Fr::one() - index_delta) * value_delta * (Fr::one() - next_gate_access_type);
-
-    // Contribution 15,16,17: RAM
-    evals[15] = adjacent_values_match_if_adjacent_indices_match_and_next_access_is_a_read_operation
-        * wire(p, Wire::QArith)
-        * wire(p, Wire::QAux)
-        * domain_sep;
-    evals[16] = index_is_monotonically_increasing
-        * wire(p, Wire::QArith)
-        * wire(p, Wire::QAux)
-        * domain_sep;
-    evals[17] = (next_gate_access_type * next_gate_access_type - next_gate_access_type)
-        * wire(p, Wire::QArith)
-        * wire(p, Wire::QAux)
-        * domain_sep;
-
-    let rom_consistency_check_identity =
-        memory_record_check * wire(p, Wire::Ql) * wire(p, Wire::Qr);
-    let ram_timestamp_check_identity = (Fr::one() - index_delta)
-        * (wire(p, Wire::WrShift) - wire(p, Wire::Wr))
-        - wire(p, Wire::Wo);
-    let ram_consistency_check_identity = access_check * wire(p, Wire::QArith);
-
-    let memory_identity = rom_consistency_check_identity
-        + ram_timestamp_check_identity * wire(p, Wire::Q4) * wire(p, Wire::Ql)
-        + memory_record_check * wire(p, Wire::Qm) * wire(p, Wire::Ql)
-        + ram_consistency_check_identity;
-
-    let auxiliary_identity =
-        memory_identity + non_native_field_identity + limb_accumulator_identity;
-    // Contribution 12
-    evals[12] = auxiliary_identity * wire(p, Wire::QAux) * domain_sep;
+    // Contribution 19
+    evals[19] = nnf_identity * wire(p, Wire::QNnf) * domain_sep;
 }
 
-/// Accumulate Poseidon external subrelations (indices 18..21).
+/// Accumulate Poseidon external subrelations (indices 20..23).
 fn accumulate_poseidon_external_relation(p: &[Fr], evals: &mut [Fr], domain_sep: Fr) {
     let s1 = wire(p, Wire::Wl) + wire(p, Wire::Ql);
     let s2 = wire(p, Wire::Wr) + wire(p, Wire::Qr);
@@ -353,13 +373,13 @@ fn accumulate_poseidon_external_relation(p: &[Fr], evals: &mut [Fr], domain_sep:
     let v3 = t2 + v4;
 
     let q_poseidon = wire(p, Wire::QPoseidon2External);
-    evals[18] = (v1 - wire(p, Wire::WlShift)) * q_poseidon * domain_sep;
-    evals[19] = (v2 - wire(p, Wire::WrShift)) * q_poseidon * domain_sep;
-    evals[20] = (v3 - wire(p, Wire::WoShift)) * q_poseidon * domain_sep;
-    evals[21] = (v4 - wire(p, Wire::W4Shift)) * q_poseidon * domain_sep;
+    evals[20] = (v1 - wire(p, Wire::WlShift)) * q_poseidon * domain_sep;
+    evals[21] = (v2 - wire(p, Wire::WrShift)) * q_poseidon * domain_sep;
+    evals[22] = (v3 - wire(p, Wire::WoShift)) * q_poseidon * domain_sep;
+    evals[23] = (v4 - wire(p, Wire::W4Shift)) * q_poseidon * domain_sep;
 }
 
-/// Accumulate Poseidon internal subrelations (indices 22..25).
+/// Accumulate Poseidon internal subrelations (indices 24..27).
 fn accumulate_poseidon_internal_relation(p: &[Fr], evals: &mut [Fr], domain_sep: Fr) {
     let u1_int = (wire(p, Wire::Wl) + wire(p, Wire::Ql)).pow(5);
     let u2_int = wire(p, Wire::Wr);
@@ -374,13 +394,13 @@ fn accumulate_poseidon_internal_relation(p: &[Fr], evals: &mut [Fr], domain_sep:
     let w3 = u3_int * diag[2] + u_sum;
     let w4 = u4_int * diag[3] + u_sum;
 
-    evals[22] = (w1 - wire(p, Wire::WlShift)) * q_poseidon * domain_sep;
-    evals[23] = (w2 - wire(p, Wire::WrShift)) * q_poseidon * domain_sep;
-    evals[24] = (w3 - wire(p, Wire::WoShift)) * q_poseidon * domain_sep;
-    evals[25] = (w4 - wire(p, Wire::W4Shift)) * q_poseidon * domain_sep;
+    evals[24] = (w1 - wire(p, Wire::WlShift)) * q_poseidon * domain_sep;
+    evals[25] = (w2 - wire(p, Wire::WrShift)) * q_poseidon * domain_sep;
+    evals[26] = (w3 - wire(p, Wire::WoShift)) * q_poseidon * domain_sep;
+    evals[27] = (w4 - wire(p, Wire::W4Shift)) * q_poseidon * domain_sep;
 }
 
-/// Batch all NUM_SUBRELATIONS = 26 subrelations with the alpha challenges.
+/// Batch all NUM_SUBRELATIONS = 28 subrelations with the alpha challenges.
 fn scale_and_batch_subrelations(evaluations: &[Fr], subrelation_challenges: &[Fr]) -> Fr {
     let mut accumulator = evaluations[0];
     for i in 1..NUMBER_OF_SUBRELATIONS {
@@ -413,12 +433,13 @@ pub fn accumulate_relation_evaluations(
     );
     accumulate_delta_range_relation(purported_evaluations, &mut evaluations, pow_partial_eval);
     accumulate_elliptic_relation(purported_evaluations, &mut evaluations, pow_partial_eval);
-    accumulate_auxillary_relation(
+    accumulate_memory_relation(
         purported_evaluations,
         rp,
         &mut evaluations,
         pow_partial_eval,
     );
+    accumulate_nnf_relation(purported_evaluations, &mut evaluations, pow_partial_eval);
     accumulate_poseidon_external_relation(
         purported_evaluations,
         &mut evaluations,
@@ -429,6 +450,15 @@ pub fn accumulate_relation_evaluations(
         &mut evaluations,
         pow_partial_eval,
     );
+
+    #[cfg(feature = "trace")]
+    {
+        for i in 0..NUMBER_OF_SUBRELATIONS {
+            if evaluations[i] != Fr::zero() {
+                println!("subrel[{:02}] = 0x{}", i, hex::encode(evaluations[i].to_bytes()));
+            }
+        }
+    }
 
     let accumulator = scale_and_batch_subrelations(&evaluations, alphas);
     accumulator
