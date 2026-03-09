@@ -30,10 +30,9 @@ install_bb() {
 
 install_nargo
 install_bb
-ls ../circuits
+
 # ─── build every circuit ───
 for dir in ../circuits/* ; do
-  echo  $dir
   [ -d "$dir" ] || continue
   name=$(basename "$dir")
   echo "► building $name"
@@ -46,10 +45,10 @@ for dir in ../circuits/* ; do
   gz="target/${name}.gz"
 
   bb write_vk -b "$json" -o target \
-    --verifier_target evm
+    --verifier_target evm-no-zk
 
   bb prove -b "$json" -w "$gz" -o target \
-    --verifier_target evm
+    --verifier_target evm-no-zk
 
   # Flatten nested directories that bb may create
   if [[ -d target/vk && -f target/vk/vk ]]; then
