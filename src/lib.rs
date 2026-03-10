@@ -1,6 +1,6 @@
 #![no_std]
 use soroban_sdk::{contract, contracterror, contractimpl, symbol_short, Bytes, Env, Symbol};
-use ultrahonk_soroban_verifier::{UltraHonkVerifier, PROOF_BYTES};
+use ultrahonk_soroban_verifier::UltraHonkVerifier;
 
 /// Contract
 #[contract]
@@ -30,10 +30,6 @@ impl UltraHonkVerifierContract {
 
     /// Verify an UltraHonk proof using the stored VK.
     pub fn verify_proof(env: Env, public_inputs: Bytes, proof_bytes: Bytes) -> Result<(), Error> {
-        if proof_bytes.len() as usize != PROOF_BYTES {
-            return Err(Error::ProofParseError);
-        }
-
         let vk_bytes: Bytes = env
             .storage()
             .instance()

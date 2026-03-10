@@ -1,7 +1,9 @@
 //! UltraHonk verifier
 
 use crate::{
+    ec::{EcOps, SorobanEc},
     field::Fr,
+    hash::hash32,
     shplemini::verify_shplemini,
     sumcheck::verify_sumcheck,
     transcript::generate_transcript,
@@ -18,22 +20,49 @@ pub enum VerifyError {
     ShplonkFailed(&'static str),
 }
 
-pub struct UltraHonkVerifier {
+pub struct UltraHonkVerifier<E: EcOps> {
     env: Env,
+    ec: E,
     vk: crate::types::VerificationKey,
 }
 
-impl UltraHonkVerifier {
-    pub fn new_with_vk(env: &Env, vk: crate::types::VerificationKey) -> Self {
+/// Compute the VK hash: keccak256(vk_bytes) reduced mod BN254 scalar field order.
+fn compute_vk_hash(_env: &Env, vk_bytes: &Bytes) -> [u8; 32] {
+    Fr::from_bytes(&hash32(vk_bytes)).to_bytes()
+}
+
+impl<'a> UltraHonkVerifier<SorobanEc<'a>> {
+    pub fn new(env: &'a Env, vk_bytes: &Bytes) -> Result<Self, VerifyError> {
+        let vk_hash = compute_vk_hash(env, vk_bytes);
+        load_vk_from_bytes(vk_bytes)
+            .map(|mut vk| {
+                vk.vk_hash = vk_hash;
+                Self::new_with_vk(env, vk)
+            })
+            .ok_or(VerifyError::InvalidInput("vk parse error"))
+    }
+
+    pub fn new_with_vk(env: &'a Env, vk: crate::types::VerificationKey) -> Self {
         Self {
             env: env.clone(),
+            ec: SorobanEc(env),
             vk,
         }
     }
+}
 
-    pub fn new(env: &Env, vk_bytes: &Bytes) -> Result<Self, VerifyError> {
+impl<E: EcOps> UltraHonkVerifier<E> {
+    pub fn new_with_backend(env: &Env, ec: E, vk_bytes: &Bytes) -> Result<Self, VerifyError> {
+        let vk_hash = compute_vk_hash(env, vk_bytes);
         load_vk_from_bytes(vk_bytes)
-            .map(|vk| Self::new_with_vk(env, vk))
+            .map(|mut vk| {
+                vk.vk_hash = vk_hash;
+                Self {
+                    env: env.clone(),
+                    ec,
+                    vk,
+                }
+            })
             .ok_or(VerifyError::InvalidInput("vk parse error"))
     }
 
@@ -48,8 +77,10 @@ impl UltraHonkVerifier {
         proof_bytes: &Bytes,
         public_inputs_bytes: &Bytes,
     ) -> Result<(), VerifyError> {
-        // 1) parse proof
-        let proof = load_proof(proof_bytes);
+        let log_n = self.vk.log_circuit_size as usize;
+
+        // 1) parse proof (dynamic size based on log_n)
+        let proof = load_proof(proof_bytes, log_n);
 
         // 2) sanity on public inputs (length and VK metadata if present)
         if public_inputs_bytes.len() % 32 != 0 {
@@ -67,16 +98,14 @@ impl UltraHonkVerifier {
             return Err(VerifyError::InvalidInput("public inputs mismatch"));
         }
 
-        // 3) Fiat–Shamir transcript
-        let pis_total = provided + PAIRING_POINTS_SIZE as u64;
-        let pub_inputs_offset = 1;
+        // 3) Fiat–Shamir transcript (uses VK hash, not circuit metadata)
         let mut t = generate_transcript(
             &self.env,
             &proof,
             public_inputs_bytes,
-            self.vk.circuit_size,
-            pis_total,
-            pub_inputs_offset,
+            &self.vk.vk_hash,
+            self.vk.public_inputs_size,
+            log_n,
         );
 
         // 4) Public delta
@@ -85,16 +114,17 @@ impl UltraHonkVerifier {
             &proof.pairing_point_object,
             t.rel_params.beta,
             t.rel_params.gamma,
-            pub_inputs_offset,
-            self.vk.circuit_size,
+            self.vk.pub_inputs_offset,
         )
         .map_err(VerifyError::InvalidInput)?;
+
+        crate::trace!("public_inputs_delta = 0x{}", hex::encode(t.rel_params.public_inputs_delta.to_bytes()));
 
         // 5) Sum-check
         verify_sumcheck(&proof, &t, &self.vk).map_err(VerifyError::SumcheckFailed)?;
 
         // 6) Shplonk
-        verify_shplemini(&self.env, &proof, &self.vk, &t).map_err(VerifyError::ShplonkFailed)?;
+        verify_shplemini(&self.ec, &proof, &self.vk, &t).map_err(VerifyError::ShplonkFailed)?;
 
         Ok(())
     }
@@ -105,12 +135,14 @@ impl UltraHonkVerifier {
         beta: Fr,
         gamma: Fr,
         offset: u64,
-        n: u64,
     ) -> Result<Fr, &'static str> {
+        // bb 3.0 uses a fixed separator (1 << 28) instead of circuit_size
+        const PERMUTATION_ARGUMENT_VALUE_SEPARATOR: u64 = 1 << 28;
         let mut numerator = Fr::one();
         let mut denominator = Fr::one();
 
-        let mut numerator_acc = gamma + beta * Fr::from_u64(n + offset);
+        let mut numerator_acc =
+            gamma + beta * Fr::from_u64(PERMUTATION_ARGUMENT_VALUE_SEPARATOR + offset);
         let mut denominator_acc = gamma - beta * Fr::from_u64(offset + 1);
 
         let mut idx = 0u32;

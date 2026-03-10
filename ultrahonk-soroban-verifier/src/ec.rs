@@ -26,6 +26,29 @@ const LHS_G2_BYTES: [u8; 128] = [
     0x11, 0xe6, 0xdd, 0x3f, 0x96, 0xe6, 0xce, 0xa2, 0x85, 0x4a, 0x87, 0xd4, 0xda, 0xcc, 0x5e, 0x55,
 ];
 
+// ---------------------------------------------------------------------------
+// EcOps trait — abstracts BN254 elliptic curve operations
+// ---------------------------------------------------------------------------
+
+/// Trait abstracting BN254 G1 elliptic curve operations.
+///
+/// Two implementations are provided:
+/// - `SorobanEc`: delegates to Soroban native host functions (Protocol 25)
+/// - `ArkEc`: pure-Rust via arkworks (available behind `std` feature for testing)
+pub trait EcOps {
+    type G1: Clone;
+
+    fn msm(&self, coms: &[G1Point], scalars: &[Fr]) -> Result<Self::G1, &'static str>;
+    fn negate(&self, pt: &G1Point) -> Self::G1;
+    fn pairing_check(&self, p0: &Self::G1, p1: &Self::G1) -> bool;
+}
+
+// ---------------------------------------------------------------------------
+// Soroban backend — delegates to env.crypto().bn254()
+// ---------------------------------------------------------------------------
+
+pub struct SorobanEc<'a>(pub &'a Env);
+
 #[inline(always)]
 fn fr_to_bn254(env: &Env, fr: &Fr) -> Bn254Fr {
     Bn254Fr::from_bytes(BytesN::from_array(env, &fr.to_bytes()))
@@ -37,57 +60,146 @@ fn g1_from_point(env: &Env, pt: &G1Point) -> Bn254G1Affine {
 }
 
 #[inline(always)]
-pub fn rhs_g2_affine(env: &Env) -> Bn254G2Affine {
+fn rhs_g2_affine(env: &Env) -> Bn254G2Affine {
     Bn254G2Affine::from_array(env, &RHS_G2_BYTES)
 }
 
 #[inline(always)]
-pub fn lhs_g2_affine(env: &Env) -> Bn254G2Affine {
+fn lhs_g2_affine(env: &Env) -> Bn254G2Affine {
     Bn254G2Affine::from_array(env, &LHS_G2_BYTES)
 }
 
-/// Multi-scalar multiplication on G1: ∑ sᵢ·Cᵢ
-#[inline(always)]
-pub fn g1_msm(env: &Env, coms: &[G1Point], scalars: &[Fr]) -> Result<Bn254G1Affine, &'static str> {
-    if coms.len() != scalars.len() {
-        return Err("msm len mismatch");
-    }
-    let bn = env.crypto().bn254();
-    let mut acc = Bn254G1Affine::from_array(env, &G1Point::infinity().to_bytes());
-    for (c, s) in coms.iter().zip(scalars.iter()) {
-        if s.is_zero() {
-            continue;
+impl<'a> EcOps for SorobanEc<'a> {
+    type G1 = Bn254G1Affine;
+
+    #[inline(always)]
+    fn msm(&self, coms: &[G1Point], scalars: &[Fr]) -> Result<Bn254G1Affine, &'static str> {
+        if coms.len() != scalars.len() {
+            return Err("msm len mismatch");
         }
-        let p = g1_from_point(env, c);
-        let scalar = fr_to_bn254(env, s);
-        let term = bn.g1_mul(&p, &scalar);
-        acc = bn.g1_add(&acc, &term);
+        let bn = self.0.crypto().bn254();
+        let mut acc = Bn254G1Affine::from_array(self.0, &G1Point::infinity().to_bytes());
+        for (c, s) in coms.iter().zip(scalars.iter()) {
+            if s.is_zero() {
+                continue;
+            }
+            let p = g1_from_point(self.0, c);
+            let scalar = fr_to_bn254(self.0, s);
+            let term = bn.g1_mul(&p, &scalar);
+            acc = bn.g1_add(&acc, &term);
+        }
+        Ok(acc)
     }
-    Ok(acc)
+
+    #[inline(always)]
+    fn negate(&self, pt: &G1Point) -> Bn254G1Affine {
+        -g1_from_point(self.0, pt)
+    }
+
+    #[inline(always)]
+    fn pairing_check(&self, p0: &Bn254G1Affine, p1: &Bn254G1Affine) -> bool {
+        let mut g1s: Vec<Bn254G1Affine> = Vec::new(self.0);
+        g1s.push_back(p0.clone());
+        g1s.push_back(p1.clone());
+        let mut g2s: Vec<Bn254G2Affine> = Vec::new(self.0);
+        g2s.push_back(rhs_g2_affine(self.0));
+        g2s.push_back(lhs_g2_affine(self.0));
+        self.0.crypto().bn254().pairing_check(g1s, g2s)
+    }
 }
 
-/// Pairing product check e(P0, rhs_g2) * e(P1, lhs_g2) == 1
-#[inline(always)]
-pub fn pairing_check(env: &Env, p0: &Bn254G1Affine, p1: &Bn254G1Affine) -> bool {
-    let mut g1s: Vec<Bn254G1Affine> = Vec::new(env);
-    g1s.push_back(p0.clone());
-    g1s.push_back(p1.clone());
-    let mut g2s: Vec<Bn254G2Affine> = Vec::new(env);
-    g2s.push_back(rhs_g2_affine(env));
-    g2s.push_back(lhs_g2_affine(env));
-    env.crypto().bn254().pairing_check(g1s, g2s)
-}
+// ---------------------------------------------------------------------------
+// Arkworks backend — pure-Rust, for testing without Soroban host functions
+// ---------------------------------------------------------------------------
 
-pub mod helpers {
+#[cfg(feature = "std")]
+pub mod ark_backend {
     use super::*;
+    use ark_bn254::{Bn254, G1Affine as ArkG1Affine, G1Projective, G2Affine as ArkG2Affine};
+    use ark_ff::{PrimeField, Zero};
+    use ark_ec::pairing::Pairing;
+    use core::ops::Mul;
 
-    #[inline(always)]
-    pub fn to_affine(env: &Env, pt: &G1Point) -> Bn254G1Affine {
-        g1_from_point(env, pt)
+    pub struct ArkEc;
+
+    fn ark_g1_from_point(pt: &G1Point) -> ArkG1Affine {
+        let bytes = pt.to_bytes();
+        // Check for point at infinity
+        if bytes == [0u8; 64] {
+            return ArkG1Affine::identity();
+        }
+        // BN254 coords are big-endian 32-byte each
+        let mut x_le = [0u8; 32];
+        let mut y_le = [0u8; 32];
+        x_le.copy_from_slice(&bytes[..32]);
+        x_le.reverse();
+        y_le.copy_from_slice(&bytes[32..]);
+        y_le.reverse();
+        let x = ark_bn254::Fq::from_le_bytes_mod_order(&x_le);
+        let y = ark_bn254::Fq::from_le_bytes_mod_order(&y_le);
+        ArkG1Affine::new(x, y)
     }
 
-    #[inline(always)]
-    pub fn negate(env: &Env, pt: &G1Point) -> Bn254G1Affine {
-        -g1_from_point(env, pt)
+    fn ark_g2_from_bytes(bytes: &[u8; 128]) -> ArkG2Affine {
+        // G2 point: 4 x 32 bytes = (x_c0, x_c1, y_c0, y_c1) big-endian
+        let mut buf = [0u8; 32];
+
+        buf.copy_from_slice(&bytes[0..32]);
+        buf.reverse();
+        let x_c0 = ark_bn254::Fq::from_le_bytes_mod_order(&buf);
+
+        buf.copy_from_slice(&bytes[32..64]);
+        buf.reverse();
+        let x_c1 = ark_bn254::Fq::from_le_bytes_mod_order(&buf);
+
+        buf.copy_from_slice(&bytes[64..96]);
+        buf.reverse();
+        let y_c0 = ark_bn254::Fq::from_le_bytes_mod_order(&buf);
+
+        buf.copy_from_slice(&bytes[96..128]);
+        buf.reverse();
+        let y_c1 = ark_bn254::Fq::from_le_bytes_mod_order(&buf);
+
+        let x = ark_bn254::Fq2::new(x_c0, x_c1);
+        let y = ark_bn254::Fq2::new(y_c0, y_c1);
+        ArkG2Affine::new(x, y)
+    }
+
+    impl EcOps for ArkEc {
+        type G1 = ArkG1Affine;
+
+        fn msm(&self, coms: &[G1Point], scalars: &[Fr]) -> Result<ArkG1Affine, &'static str> {
+            if coms.len() != scalars.len() {
+                return Err("msm len mismatch");
+            }
+            let mut acc = G1Projective::from(ArkG1Affine::identity());
+            for (c, s) in coms.iter().zip(scalars.iter()) {
+                if s.is_zero() {
+                    continue;
+                }
+                let p = ark_g1_from_point(c);
+                let proj = G1Projective::from(p);
+                acc = acc + proj.mul(s.0);
+            }
+            Ok(acc.into())
+        }
+
+        fn negate(&self, pt: &G1Point) -> ArkG1Affine {
+            let p = ark_g1_from_point(pt);
+            -p
+        }
+
+        fn pairing_check(&self, p0: &ArkG1Affine, p1: &ArkG1Affine) -> bool {
+            let rhs_g2 = ark_g2_from_bytes(&RHS_G2_BYTES);
+            let lhs_g2 = ark_g2_from_bytes(&LHS_G2_BYTES);
+            let result = Bn254::multi_pairing(
+                [*p0, *p1],
+                [rhs_g2, lhs_g2],
+            );
+            result.is_zero()
+        }
     }
 }
+
+#[cfg(feature = "std")]
+pub use ark_backend::ArkEc;

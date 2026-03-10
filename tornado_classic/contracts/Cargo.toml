@@ -5,12 +5,12 @@ edition = "2021"
 
 [dependencies]
 rs-soroban-ultrahonk = { path = "../.." }
-soroban-sdk = { git = "https://github.com/stellar/rs-soroban-sdk.git", rev = "acffbbd45be6a0a551146eebfc268d6f95078246", default-features = false, features = ["alloc"] }
+soroban-sdk = { version = "25.3.0", default-features = false, features = ["alloc"] }
 soroban-poseidon = "25.0.0-rc.1"
 ultrahonk_soroban_verifier = { path = "../../ultrahonk-soroban-verifier", default-features = false }
 
 [dev-dependencies]
-soroban-sdk = { git = "https://github.com/stellar/rs-soroban-sdk.git", rev = "acffbbd45be6a0a551146eebfc268d6f95078246", features = ["testutils", "alloc"] }
+soroban-sdk = { version = "25.3.0", features = ["testutils", "alloc"] }
 soroban-env-host = "25.0.0"
 num-bigint = "0.4"
 
@@ -28,5 +28,3 @@ name = "populate_publics"
 path = "examples/populate_publics.rs"
 required-features = ["std"]
 
-[patch.crates-io]
-soroban-sdk = { git = "https://github.com/stellar/rs-soroban-sdk.git", rev = "acffbbd45be6a0a551146eebfc268d6f95078246" }
