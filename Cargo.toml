@@ -8,8 +8,8 @@ members = [
     "contracts/identity"
 ]
 
-[patch.crates-io]
-soroban-sdk = { git = "https://github.com/stellar/rs-soroban-sdk.git", rev = "acffbbd45be6a0a551146eebfc268d6f95078246" }
+[workspace.dependencies]
+soroban-sdk = { git = "https://github.com/stellar/rs-soroban-sdk", rev = "3b031847eb043856cc5bcad45bd5a6512370cd16", default-features = false }
 
 [profile.release]
 opt-level = "z"

@@ -5,13 +5,13 @@ edition = "2021"
 
 [dependencies]
 rs-soroban-ultrahonk = { path = "../../rs-soroban-ultrahonk" }
-soroban-sdk = { git = "https://github.com/stellar/rs-soroban-sdk.git", rev = "acffbbd45be6a0a551146eebfc268d6f95078246", default-features = false, features = ["alloc"] }
-soroban-poseidon = "25.0.0-rc.1"
+soroban-sdk = { workspace = true, features = ["alloc"] }
+soroban-poseidon = { git = "https://github.com/stellar/rs-soroban-poseidon", rev = "c1e8cdb6b59817a315b329bdfd08564231b0e424" }
 ultrahonk_soroban_verifier = { path = "../../../crates/ultrahonk-soroban-verifier", default-features = false }
 
 [dev-dependencies]
-soroban-sdk = { git = "https://github.com/stellar/rs-soroban-sdk.git", rev = "acffbbd45be6a0a551146eebfc268d6f95078246", features = ["testutils", "alloc"] }
-soroban-env-host = "25.0.0"
+soroban-sdk = { workspace = true, features = ["testutils", "alloc"] }
+soroban-env-host = "26.1.2"
 num-bigint = "0.4"
 
 [lib]
