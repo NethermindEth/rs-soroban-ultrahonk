@@ -1,6 +1,6 @@
 use crate::{field::Fr, types::G1Point};
 use soroban_sdk::{
-    crypto::bn254::{Bn254G1Affine, Bn254G2Affine, Bn254Fr},
+    crypto::bn254::{Bn254Fr, Bn254G1Affine, Bn254G2Affine},
     BytesN, Env, Vec,
 };
 

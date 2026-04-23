@@ -1,5 +1,6 @@
 //! Fiat–Shamir transcript for UltraHonk
 
+use crate::env::Bn254FrGenerator;
 use crate::trace;
 use crate::{
     field::Fr,
@@ -62,10 +63,10 @@ fn generate_eta_challenge(
     }
 
     let previous_challenge = hash_to_fr(&data);
-    let (eta, eta_two) = split_challenge(previous_challenge);
+    let (eta, eta_two) = split_challenge(previous_challenge.clone());
     let prev_bytes = Bytes::from_array(env, &previous_challenge.to_bytes());
     let previous_challenge = hash_to_fr(&prev_bytes);
-    let (eta_three, _) = split_challenge(previous_challenge);
+    let (eta_three, _) = split_challenge(previous_challenge.clone());
 
     (eta, eta_two, eta_three, previous_challenge)
 }
@@ -85,7 +86,7 @@ fn generate_beta_and_gamma_challenges(
         push_point(&mut data, w);
     }
     let next_previous_challenge = hash_to_fr(&data);
-    let (beta, gamma) = split_challenge(next_previous_challenge);
+    let (beta, gamma) = split_challenge(next_previous_challenge.clone());
     (beta, gamma, next_previous_challenge)
 }
 
@@ -101,15 +102,15 @@ fn generate_alpha_challenges(
     }
     let mut next_previous_challenge = hash_to_fr(&data);
 
-    let mut alphas = [Fr::zero(); NUMBER_OF_ALPHAS];
-    let (a0, a1) = split_challenge(next_previous_challenge);
+    let mut alphas = env.zero_array::<NUMBER_OF_ALPHAS>();
+    let (a0, a1) = split_challenge(next_previous_challenge.clone());
     alphas[0] = a0;
     alphas[1] = a1;
 
     for i in 1..(NUMBER_OF_ALPHAS / 2) {
         let next_bytes = Bytes::from_array(env, &next_previous_challenge.to_bytes());
         next_previous_challenge = hash_to_fr(&next_bytes);
-        let (lo, hi) = split_challenge(next_previous_challenge);
+        let (lo, hi) = split_challenge(next_previous_challenge.clone());
         alphas[2 * i] = lo;
         alphas[2 * i + 1] = hi;
     }
@@ -117,7 +118,7 @@ fn generate_alpha_challenges(
     if (NUMBER_OF_ALPHAS & 1) == 1 && NUMBER_OF_ALPHAS > 2 {
         let next_bytes = Bytes::from_array(env, &next_previous_challenge.to_bytes());
         next_previous_challenge = hash_to_fr(&next_bytes);
-        let (last, _) = split_challenge(next_previous_challenge);
+        let (last, _) = split_challenge(next_previous_challenge.clone());
         alphas[NUMBER_OF_ALPHAS - 1] = last;
     }
 
@@ -158,11 +159,11 @@ fn generate_gate_challenges(
     previous_challenge: Fr,
 ) -> ([Fr; CONST_PROOF_SIZE_LOG_N], Fr) {
     let mut next_previous_challenge = previous_challenge;
-    let mut gate_challenges = [Fr::zero(); CONST_PROOF_SIZE_LOG_N];
+    let mut gate_challenges = env.zero_array::<CONST_PROOF_SIZE_LOG_N>();
     for challenge in gate_challenges.iter_mut() {
         let next_bytes = Bytes::from_array(env, &next_previous_challenge.to_bytes());
         next_previous_challenge = hash_to_fr(&next_bytes);
-        *challenge = split_challenge(next_previous_challenge).0;
+        *challenge = split_challenge(next_previous_challenge.clone()).0;
     }
     (gate_challenges, next_previous_challenge)
 }
@@ -173,15 +174,15 @@ fn generate_sumcheck_challenges(
     previous_challenge: Fr,
 ) -> ([Fr; CONST_PROOF_SIZE_LOG_N], Fr) {
     let mut next_previous_challenge = previous_challenge;
-    let mut sumcheck_challenges = [Fr::zero(); CONST_PROOF_SIZE_LOG_N];
+    let mut sumcheck_challenges = env.zero_array::<CONST_PROOF_SIZE_LOG_N>();
     for (r, challenge) in sumcheck_challenges.iter_mut().enumerate() {
         let mut data = Bytes::new(env);
         data.extend_from_slice(&next_previous_challenge.to_bytes());
-        for &c in proof.sumcheck_univariates[r].iter() {
+        for c in proof.sumcheck_univariates[r].iter() {
             data.extend_from_slice(&c.to_bytes());
         }
         next_previous_challenge = hash_to_fr(&data);
-        *challenge = split_challenge(next_previous_challenge).0;
+        *challenge = split_challenge(next_previous_challenge.clone()).0;
     }
     (sumcheck_challenges, next_previous_challenge)
 }
@@ -189,11 +190,11 @@ fn generate_sumcheck_challenges(
 fn generate_rho_challenge(env: &Env, proof: &Proof, previous_challenge: Fr) -> (Fr, Fr) {
     let mut data = Bytes::new(env);
     data.extend_from_slice(&previous_challenge.to_bytes());
-    for &e in proof.sumcheck_evaluations.iter() {
+    for e in proof.sumcheck_evaluations.iter() {
         data.extend_from_slice(&e.to_bytes());
     }
     let next_previous_challenge = hash_to_fr(&data);
-    let rho = split_challenge(next_previous_challenge).0;
+    let rho = split_challenge(next_previous_challenge.clone()).0;
     (rho, next_previous_challenge)
 }
 
@@ -204,18 +205,18 @@ fn generate_gemini_r_challenge(env: &Env, proof: &Proof, previous_challenge: Fr)
         push_point(&mut data, pt);
     }
     let next_previous_challenge = hash_to_fr(&data);
-    let gemini_r = split_challenge(next_previous_challenge).0;
+    let gemini_r = split_challenge(next_previous_challenge.clone()).0;
     (gemini_r, next_previous_challenge)
 }
 
 fn generate_shplonk_nu_challenge(env: &Env, proof: &Proof, previous_challenge: Fr) -> (Fr, Fr) {
     let mut data = Bytes::new(env);
     data.extend_from_slice(&previous_challenge.to_bytes());
-    for &a in proof.gemini_a_evaluations.iter() {
+    for a in proof.gemini_a_evaluations.iter() {
         data.extend_from_slice(&a.to_bytes());
     }
     let next_previous_challenge = hash_to_fr(&data);
-    let shplonk_nu = split_challenge(next_previous_challenge).0;
+    let shplonk_nu = split_challenge(next_previous_challenge.clone()).0;
     (shplonk_nu, next_previous_challenge)
 }
 
@@ -224,7 +225,7 @@ fn generate_shplonk_z_challenge(env: &Env, proof: &Proof, previous_challenge: Fr
     data.extend_from_slice(&previous_challenge.to_bytes());
     push_point(&mut data, &proof.shplonk_q);
     let next_previous_challenge = hash_to_fr(&data);
-    let shplonk_z = split_challenge(next_previous_challenge).0;
+    let shplonk_z = split_challenge(next_previous_challenge.clone()).0;
     (shplonk_z, next_previous_challenge)
 }
 
@@ -313,7 +314,7 @@ mod tests {
         let vk_bytes = Bytes::from_slice(&env, &f.vk);
         let pi_bytes = Bytes::from_slice(&env, &f.public_inputs);
 
-        let proof = load_proof(&proof_bytes);
+        let proof = load_proof(&env, &proof_bytes);
         let vk = load_vk_from_bytes(&vk_bytes).unwrap();
 
         let t = generate_transcript(

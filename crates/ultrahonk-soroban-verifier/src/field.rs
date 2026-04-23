@@ -20,7 +20,7 @@ fn normalize_hex(s: &str) -> String {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Fr(pub ArkFr);
 
 impl Fr {
@@ -95,9 +95,9 @@ pub fn batch_inverse(vals: &[Fr], out: &mut [Fr]) -> Result<(), &'static str> {
     }
 
     // 1) Build prefix products in `out`: out[i] = vals[0] * vals[1] * ... * vals[i]
-    out[0] = vals[0];
+    out[0] = vals[0].clone();
     for i in 1..n {
-        out[i] = out[i - 1] * vals[i];
+        out[i] = &out[i - 1] * &vals[i];
     }
 
     // 2) Invert the total product
@@ -107,8 +107,8 @@ pub fn batch_inverse(vals: &[Fr], out: &mut [Fr]) -> Result<(), &'static str> {
 
     // 3) Sweep back to recover individual inverses
     for i in (1..n).rev() {
-        out[i] = inv_acc * out[i - 1];
-        inv_acc = inv_acc * vals[i];
+        out[i] = &inv_acc * &out[i - 1];
+        inv_acc = inv_acc * &vals[i];
     }
     out[0] = inv_acc;
     Ok(())
@@ -121,9 +121,51 @@ impl Add for Fr {
     }
 }
 
+impl Add<&Fr> for Fr {
+    type Output = Fr;
+    fn add(self, rhs: &Fr) -> Fr {
+        Fr(self.0 + rhs.0)
+    }
+}
+
+impl Add<Fr> for &Fr {
+    type Output = Fr;
+    fn add(self, rhs: Fr) -> Fr {
+        Fr(self.0 + rhs.0)
+    }
+}
+
+impl Add for &Fr {
+    type Output = Fr;
+    fn add(self, rhs: &Fr) -> Fr {
+        Fr(self.0 + rhs.0)
+    }
+}
+
 impl Sub for Fr {
     type Output = Fr;
     fn sub(self, rhs: Fr) -> Fr {
+        Fr(self.0 - rhs.0)
+    }
+}
+
+impl Sub<&Fr> for Fr {
+    type Output = Fr;
+    fn sub(self, rhs: &Fr) -> Fr {
+        Fr(self.0 - rhs.0)
+    }
+}
+
+impl Sub<Fr> for &Fr {
+    type Output = Fr;
+    fn sub(self, rhs: Fr) -> Fr {
+        Fr(self.0 - rhs.0)
+    }
+}
+
+impl Sub for &Fr {
+    type Output = Fr;
+    fn sub(self, rhs: &Fr) -> Fr {
         Fr(self.0 - rhs.0)
     }
 }
@@ -135,7 +177,35 @@ impl Mul for Fr {
     }
 }
 
+impl Mul<&Fr> for Fr {
+    type Output = Fr;
+    fn mul(self, rhs: &Fr) -> Fr {
+        Fr(self.0 * rhs.0)
+    }
+}
+
+impl Mul<Fr> for &Fr {
+    type Output = Fr;
+    fn mul(self, rhs: Fr) -> Fr {
+        Fr(self.0 * rhs.0)
+    }
+}
+
+impl Mul for &Fr {
+    type Output = Fr;
+    fn mul(self, rhs: &Fr) -> Fr {
+        Fr(self.0 * rhs.0)
+    }
+}
+
 impl Neg for Fr {
+    type Output = Fr;
+    fn neg(self) -> Fr {
+        Fr(-self.0)
+    }
+}
+
+impl Neg for &Fr {
     type Output = Fr;
     fn neg(self) -> Fr {
         Fr(-self.0)
@@ -149,11 +219,11 @@ mod tests {
     #[test]
     fn batch_inverse_round_trip() {
         let inputs = [Fr::from_u64(2), Fr::from_u64(3), Fr::from_u64(5)];
-        let mut inverses = [Fr::zero(); 3];
+        let mut inverses = [Fr::zero(), Fr::zero(), Fr::zero()];
         batch_inverse(&inputs, &mut inverses).unwrap();
 
         for i in 0..3 {
-            assert_eq!(inputs[i] * inverses[i], Fr::one());
+            assert_eq!(&inputs[i] * &inverses[i], Fr::one());
         }
     }
 
@@ -167,15 +237,15 @@ mod tests {
     #[test]
     fn batch_inverse_single() {
         let inputs = [Fr::from_u64(42)];
-        let mut inverses = [Fr::zero(); 1];
+        let mut inverses = [Fr::zero()];
         batch_inverse(&inputs, &mut inverses).unwrap();
-        assert_eq!(inputs[0] * inverses[0], Fr::one());
+        assert_eq!(&inputs[0] * &inverses[0], Fr::one());
     }
 
     #[test]
     fn batch_inverse_all_equal() {
         let inputs = [Fr::from_u64(7), Fr::from_u64(7), Fr::from_u64(7)];
-        let mut inverses = [Fr::zero(); 3];
+        let mut inverses = [Fr::zero(), Fr::zero(), Fr::zero()];
         batch_inverse(&inputs, &mut inverses).unwrap();
 
         let expected_inv = Fr::from_u64(7).inverse().unwrap();

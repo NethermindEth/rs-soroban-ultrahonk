@@ -1,6 +1,7 @@
 //! Shplemini batch-opening verifier for BN254
 use crate::ec::helpers::negate;
 use crate::ec::{g1_msm, pairing_check};
+use crate::env::Bn254FrGenerator;
 use crate::field::{batch_inverse, Fr};
 use crate::trace;
 use crate::types::{
@@ -18,10 +19,10 @@ pub fn verify_shplemini(
 ) -> Result<(), &'static str> {
     // 1) r^{2^i}
     let log_n = vk.log_circuit_size as usize;
-    let mut r_pows = [Fr::zero(); CONST_PROOF_SIZE_LOG_N];
-    r_pows[0] = tp.gemini_r;
+    let mut r_pows = env.zero_array::<CONST_PROOF_SIZE_LOG_N>();
+    r_pows[0] = tp.gemini_r.clone();
     for i in 1..log_n {
-        r_pows[i] = r_pows[i - 1] * r_pows[i - 1];
+        r_pows[i] = &r_pows[i - 1] * &r_pows[i - 1];
     }
 
     // We need the following inversions:
@@ -42,24 +43,24 @@ pub fn verify_shplemini(
     // Max batch size: 3*CONST_PROOF_SIZE_LOG_N + 1 (upper bound when log_n == CONST_PROOF_SIZE_LOG_N)
     const MAX_BATCH: usize = 3 * CONST_PROOF_SIZE_LOG_N + 1;
     let batch_size = 3 + log_n + 2 * (log_n - 1);
-    let mut to_invert = [Fr::zero(); MAX_BATCH];
-    let mut inverted = [Fr::zero(); MAX_BATCH];
+    let mut to_invert = env.zero_array::<MAX_BATCH>();
+    let mut inverted = env.zero_array::<MAX_BATCH>();
 
-    to_invert[0] = tp.shplonk_z - r_pows[0];
-    to_invert[1] = tp.shplonk_z + r_pows[0];
-    to_invert[2] = tp.gemini_r;
+    to_invert[0] = &tp.shplonk_z - &r_pows[0];
+    to_invert[1] = &tp.shplonk_z + &r_pows[0];
+    to_invert[2] = tp.gemini_r.clone();
 
     // fold round denominators: r^j * (1 - u_j) + u_j, for j = log_n down to 1
     for j in (1..=log_n).rev() {
-        let u = tp.sumcheck_u_challenges[j - 1];
-        to_invert[3 + (log_n - j)] = r_pows[j - 1] * (Fr::one() - u) + u;
+        let u = tp.sumcheck_u_challenges[j - 1].clone();
+        to_invert[3 + (log_n - j)] = &r_pows[j - 1] * &(Fr::one() - &u) + &u;
     }
 
     // further folding denominators: (z - r^j) and (z + r^j) for j = 1..log_n
     let further_base = 3 + log_n;
     for j in 1..log_n {
-        to_invert[further_base + 2 * (j - 1)] = tp.shplonk_z - r_pows[j];
-        to_invert[further_base + 2 * (j - 1) + 1] = tp.shplonk_z + r_pows[j];
+        to_invert[further_base + 2 * (j - 1)] = &tp.shplonk_z - &r_pows[j];
+        to_invert[further_base + 2 * (j - 1) + 1] = &tp.shplonk_z + &r_pows[j];
     }
 
     batch_inverse(&to_invert[..batch_size], &mut inverted[..batch_size]).map_err(|_| {
@@ -67,9 +68,9 @@ pub fn verify_shplemini(
     })?;
 
     // Unpack results
-    let pos0 = inverted[0];
-    let neg0 = inverted[1];
-    let gemini_r_inv = inverted[2];
+    let pos0 = inverted[0].clone();
+    let neg0 = inverted[1].clone();
+    let gemini_r_inv = inverted[2].clone();
 
     // 2) allocate arrays
     // Match Solidity sizing: NUMBER_OF_ENTITIES + CONST_PROOF_SIZE_LOG_N + 2
@@ -81,12 +82,12 @@ pub fn verify_shplemini(
     //   [69]                = kzg_quotient with scalar z
     const TOTAL: usize = 1 + NUMBER_OF_ENTITIES + CONST_PROOF_SIZE_LOG_N + 1;
     trace!("total = {}", TOTAL);
-    let mut scalars = [Fr::zero(); TOTAL];
+    let mut scalars = env.zero_array::<TOTAL>();
     let mut coms = [G1Point::infinity(); TOTAL];
 
     // 3) compute shplonk weights
-    let unshifted = pos0 + tp.shplonk_nu * neg0;
-    let shifted = gemini_r_inv * (pos0 - tp.shplonk_nu * neg0);
+    let unshifted = &tp.shplonk_nu * &neg0 + &pos0;
+    let shifted = gemini_r_inv * (&pos0 - &(&tp.shplonk_nu * &neg0));
     // 4) shplonk_Q
     scalars[0] = Fr::one();
     coms[0] = proof.shplonk_q;
@@ -103,13 +104,13 @@ pub fn verify_shplemini(
         .enumerate()
     {
         let scalar = if idx < NUMBER_UNSHIFTED {
-            -unshifted
+            -unshifted.clone()
         } else {
-            -shifted
-        } * rho_pow;
+            -shifted.clone()
+        } * &rho_pow;
         scalars[1 + idx] = scalar;
-        eval_acc = eval_acc + (*eval * rho_pow);
-        rho_pow = rho_pow * tp.rho;
+        eval_acc = eval_acc + &(eval * &rho_pow);
+        rho_pow = rho_pow * &tp.rho;
     }
     // 6) load VK & proof
     {
@@ -181,33 +182,34 @@ pub fn verify_shplemini(
     }
 
     // 7) folding rounds — use batch-inverted denominators
-    let mut fold_pos = [Fr::zero(); CONST_PROOF_SIZE_LOG_N];
+    let mut fold_pos = env.zero_array::<CONST_PROOF_SIZE_LOG_N>();
     let mut cur = eval_acc;
     for j in (1..=log_n).rev() {
-        let r2 = r_pows[j - 1];
-        let u = tp.sumcheck_u_challenges[j - 1];
-        let num = r2 * cur * Fr::from_u64(2)
-            - proof.gemini_a_evaluations[j - 1] * (r2 * (Fr::one() - u) - u);
-        let den_inv = inverted[3 + (log_n - j)];
-        cur = num * den_inv;
-        fold_pos[j - 1] = cur;
+        let r2 = r_pows[j - 1].clone();
+        let u = tp.sumcheck_u_challenges[j - 1].clone();
+        let num = &r2 * &cur * Fr::from_u64(2)
+            - &(&proof.gemini_a_evaluations[j - 1] * &(&r2 * &(Fr::one() - &u) - &u));
+        let den_inv = inverted[3 + (log_n - j)].clone();
+        cur = num * &den_inv;
+        fold_pos[j - 1] = cur.clone();
     }
     // 8) accumulate constant term
-    let mut const_acc = fold_pos[0] * pos0 + proof.gemini_a_evaluations[0] * tp.shplonk_nu * neg0;
-    let mut v_pow = tp.shplonk_nu * tp.shplonk_nu;
+    let mut const_acc =
+        &fold_pos[0] * &pos0 + &(&proof.gemini_a_evaluations[0] * &tp.shplonk_nu * &neg0);
+    let mut v_pow = &tp.shplonk_nu * &tp.shplonk_nu;
     // 9) further folding + commit — use batch-inverted denominators
     // Base index where fold commitments start
     let base = 1 + NUMBER_OF_ENTITIES;
     for j in 1..log_n {
-        let pos_inv = inverted[further_base + 2 * (j - 1)];
-        let neg_inv = inverted[further_base + 2 * (j - 1) + 1];
-        let sp = v_pow * pos_inv;
-        let sn = v_pow * tp.shplonk_nu * neg_inv;
+        let pos_inv = inverted[further_base + 2 * (j - 1)].clone();
+        let neg_inv = inverted[further_base + 2 * (j - 1) + 1].clone();
+        let sp = &v_pow * &pos_inv;
+        let sn = &v_pow * &tp.shplonk_nu * &neg_inv;
 
-        scalars[base + j - 1] = -(sp + sn);
-        const_acc = const_acc + proof.gemini_a_evaluations[j] * sn + fold_pos[j] * sp;
+        scalars[base + j - 1] = -(&sp + &sn);
+        const_acc = const_acc + &(&proof.gemini_a_evaluations[j] * &sn) + &(&fold_pos[j] * &sp);
 
-        v_pow = v_pow * tp.shplonk_nu * tp.shplonk_nu;
+        v_pow = v_pow * &tp.shplonk_nu * &tp.shplonk_nu;
 
         coms[base + j - 1] = proof.gemini_fold_comms[j - 1];
     }
@@ -227,7 +229,7 @@ pub fn verify_shplemini(
     let q_idx = one_idx + 1;
     trace!("q_idx = {}", q_idx);
     coms[q_idx] = proof.kzg_quotient;
-    scalars[q_idx] = tp.shplonk_z;
+    scalars[q_idx] = tp.shplonk_z.clone();
 
     // 12) MSM + pairing
     let p0 = g1_msm(env, &coms, &scalars)?;

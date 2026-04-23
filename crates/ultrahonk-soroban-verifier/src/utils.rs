@@ -1,5 +1,6 @@
 //! Utilities for loading Proof and VerificationKey, plus byte↔field/point conversion.
 
+use crate::env::Bn254FrGenerator;
 use crate::field::Fr;
 use crate::types::{
     G1Point, Proof, VerificationKey, BATCHED_RELATION_PARTIAL_LENGTH, CONST_PROOF_SIZE_LOG_N,
@@ -7,7 +8,7 @@ use crate::types::{
 };
 use crate::PROOF_BYTES;
 use core::array;
-use soroban_sdk::Bytes;
+use soroban_sdk::{Bytes, Env};
 
 /// Convert a 32-byte big-endian array into an Fr.
 fn bytes32_to_fr(bytes: &[u8; 32]) -> Fr {
@@ -42,7 +43,7 @@ fn combine_limbs(lo: &[u8; 32], hi: &[u8; 32]) -> [u8; 32] {
 ///
 /// Note (bb v0.87.0): G1 coordinates are encoded as two limbs per coordinate
 /// using the (lo136, hi<=118) split and stored in the order (x_lo, x_hi, y_lo, y_hi).
-pub fn load_proof(proof_bytes: &Bytes) -> Proof {
+pub fn load_proof(env: &Env, proof_bytes: &Bytes) -> Proof {
     assert_eq!(proof_bytes.len() as usize, PROOF_BYTES, "proof bytes len");
     let mut boundary = 0u32;
 
@@ -84,7 +85,7 @@ pub fn load_proof(proof_bytes: &Bytes) -> Proof {
 
     // 5) sumcheck_univariates
     let mut sumcheck_univariates =
-        [[Fr::zero(); BATCHED_RELATION_PARTIAL_LENGTH]; CONST_PROOF_SIZE_LOG_N];
+        array::repeat(env.zero_array::<BATCHED_RELATION_PARTIAL_LENGTH>());
     for univariate in sumcheck_univariates.iter_mut() {
         for element in univariate.iter_mut() {
             *element = bytes_to_fr(proof_bytes, &mut boundary);

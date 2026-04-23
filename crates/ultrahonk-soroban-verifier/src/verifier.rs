@@ -45,11 +45,12 @@ impl UltraHonkVerifier {
     /// Top-level verify
     pub fn verify(
         &self,
+        env: &Env,
         proof_bytes: &Bytes,
         public_inputs_bytes: &Bytes,
     ) -> Result<(), VerifyError> {
         // 1) parse proof
-        let proof = load_proof(proof_bytes);
+        let proof = load_proof(env, proof_bytes);
 
         // 2) sanity on public inputs (length and VK metadata if present)
         if !public_inputs_bytes.len().is_multiple_of(32) {
@@ -83,15 +84,15 @@ impl UltraHonkVerifier {
         t.rel_params.public_inputs_delta = Self::compute_public_input_delta(
             public_inputs_bytes,
             &proof.pairing_point_object,
-            t.rel_params.beta,
-            t.rel_params.gamma,
+            t.rel_params.beta.clone(),
+            t.rel_params.gamma.clone(),
             pub_inputs_offset,
             self.vk.circuit_size,
         )
         .map_err(VerifyError::InvalidInput)?;
 
         // 5) Sum-check
-        verify_sumcheck(&proof, &t, &self.vk).map_err(VerifyError::SumcheckFailed)?;
+        verify_sumcheck(env, &proof, &t, &self.vk).map_err(VerifyError::SumcheckFailed)?;
 
         // 6) Shplonk
         verify_shplemini(&self.env, &proof, &self.vk, &t).map_err(VerifyError::ShplonkFailed)?;
@@ -110,25 +111,25 @@ impl UltraHonkVerifier {
         let mut numerator = Fr::one();
         let mut denominator = Fr::one();
 
-        let mut numerator_acc = gamma + beta * Fr::from_u64(n + offset);
-        let mut denominator_acc = gamma - beta * Fr::from_u64(offset + 1);
+        let mut numerator_acc = gamma.clone() + &beta * &Fr::from_u64(n + offset);
+        let mut denominator_acc = &gamma - &(&beta * &Fr::from_u64(offset + 1));
 
         let mut idx = 0u32;
         while idx < public_inputs.len() {
             let mut arr = [0u8; 32];
             public_inputs.slice(idx..idx + 32).copy_into_slice(&mut arr);
             let public_input = Fr::from_bytes(&arr);
-            numerator = numerator * (numerator_acc + public_input);
-            denominator = denominator * (denominator_acc + public_input);
-            numerator_acc = numerator_acc + beta;
-            denominator_acc = denominator_acc - beta;
+            numerator = numerator * (&numerator_acc + &public_input);
+            denominator = denominator * (&denominator_acc + &public_input);
+            numerator_acc = &numerator_acc + &beta;
+            denominator_acc = &denominator_acc - &beta;
             idx += 32;
         }
         for public_input in pairing_point_object {
-            numerator = numerator * (numerator_acc + *public_input);
-            denominator = denominator * (denominator_acc + *public_input);
-            numerator_acc = numerator_acc + beta;
-            denominator_acc = denominator_acc - beta;
+            numerator = &numerator * &(&numerator_acc + public_input);
+            denominator = &denominator * &(&denominator_acc + public_input);
+            numerator_acc = &numerator_acc + &beta;
+            denominator_acc = &denominator_acc - &beta;
         }
         let denominator_inv = denominator
             .inverse()
