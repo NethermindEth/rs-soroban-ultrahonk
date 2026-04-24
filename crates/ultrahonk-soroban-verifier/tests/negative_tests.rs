@@ -15,7 +15,8 @@ use ultrahonk_test_utils::{mutate_byte, truncate, Fixture};
 /// Set up a Soroban test environment with the required protocol version.
 fn test_env() -> Env {
     let env = Env::default();
-    env.ledger().set_protocol_version(25);
+    env.ledger().set_protocol_version(26);
+    env.cost_estimate().budget().reset_unlimited();
     env
 }
 

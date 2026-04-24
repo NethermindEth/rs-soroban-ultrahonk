@@ -10,11 +10,6 @@ use crate::PROOF_BYTES;
 use core::array;
 use soroban_sdk::{Bytes, Env};
 
-/// Convert a 32-byte big-endian array into an Fr.
-fn bytes32_to_fr(bytes: &[u8; 32]) -> Fr {
-    Fr::from_bytes(bytes)
-}
-
 /// Split a 32-byte big-endian field element into (low136, high) limbs.
 pub fn coord_to_halves_be(coord: &[u8; 32]) -> ([u8; 32], [u8; 32]) {
     let mut low = [0u8; 32];
@@ -60,7 +55,7 @@ pub fn load_proof(env: &Env, proof_bytes: &Bytes) -> Proof {
     // Helper: bytesToFr (read next 32 bytes as Fr)
     fn bytes_to_fr(bytes: &Bytes, cur: &mut u32) -> Fr {
         let arr = read_bytes::<32>(bytes, cur);
-        bytes32_to_fr(&arr)
+        bytes.env().fr_from_array(&arr)
     }
 
     // 0) pairing point object

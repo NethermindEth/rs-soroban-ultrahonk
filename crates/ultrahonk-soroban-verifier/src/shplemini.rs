@@ -2,7 +2,7 @@
 use crate::ec::helpers::negate;
 use crate::ec::{g1_msm, pairing_check};
 use crate::env::Bn254FrGenerator;
-use crate::field::{batch_inverse, Fr};
+use crate::field::batch_inverse;
 use crate::trace;
 use crate::types::{
     G1Point, Proof, Transcript, VerificationKey, CONST_PROOF_SIZE_LOG_N, NUMBER_OF_ENTITIES,
@@ -53,7 +53,7 @@ pub fn verify_shplemini(
     // fold round denominators: r^j * (1 - u_j) + u_j, for j = log_n down to 1
     for j in (1..=log_n).rev() {
         let u = tp.sumcheck_u_challenges[j - 1].clone();
-        to_invert[3 + (log_n - j)] = &r_pows[j - 1] * &(Fr::one() - &u) + &u;
+        to_invert[3 + (log_n - j)] = &r_pows[j - 1] * &(env.one() - &u) + &u;
     }
 
     // further folding denominators: (z - r^j) and (z + r^j) for j = 1..log_n
@@ -89,12 +89,12 @@ pub fn verify_shplemini(
     let unshifted = &tp.shplonk_nu * &neg0 + &pos0;
     let shifted = gemini_r_inv * (&pos0 - &(&tp.shplonk_nu * &neg0));
     // 4) shplonk_Q
-    scalars[0] = Fr::one();
+    scalars[0] = env.one();
     coms[0] = proof.shplonk_q;
 
     // 5) weight sumcheck evals
-    let mut rho_pow = Fr::one();
-    let mut eval_acc = Fr::zero();
+    let mut rho_pow = env.one();
+    let mut eval_acc = env.zero();
     let shifted_end = NUMBER_UNSHIFTED + NUMBER_TO_BE_SHIFTED;
     debug_assert_eq!(NUMBER_OF_ENTITIES, shifted_end);
     for (idx, eval) in proof
@@ -187,8 +187,8 @@ pub fn verify_shplemini(
     for j in (1..=log_n).rev() {
         let r2 = r_pows[j - 1].clone();
         let u = tp.sumcheck_u_challenges[j - 1].clone();
-        let num = &r2 * &cur * Fr::from_u64(2)
-            - &(&proof.gemini_a_evaluations[j - 1] * &(&r2 * &(Fr::one() - &u) - &u));
+        let num = &r2 * &cur * env.fr_from_u64(2)
+            - &(&proof.gemini_a_evaluations[j - 1] * &(&r2 * &(env.one() - &u) - &u));
         let den_inv = inverted[3 + (log_n - j)].clone();
         cur = num * &den_inv;
         fold_pos[j - 1] = cur.clone();

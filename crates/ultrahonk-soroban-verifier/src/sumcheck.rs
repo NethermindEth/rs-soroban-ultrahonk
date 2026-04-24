@@ -70,11 +70,11 @@ fn compute_next_target_sum(
     // B(χ) = ∏ (χ - i) for i in 0..8
     // Also collect denominators for batch inversion
     let mut denoms = env.zero_array::<BATCHED_RELATION_PARTIAL_LENGTH>();
-    let mut b_poly = Fr::one();
+    let mut b_poly = env.one();
     for i in 0..BATCHED_RELATION_PARTIAL_LENGTH {
-        let diff = &round_challenge - &Fr::from_u64(i as u64);
+        let diff = &round_challenge - &env.fr_from_u64(i as u64);
         b_poly = b_poly * &diff;
-        denoms[i] = &Fr::from_bytes(&BARY_BYTES[i]) * &diff;
+        denoms[i] = &env.fr_from_array(&BARY_BYTES[i]) * &diff;
     }
 
     // Batch invert all 8 denominators with a single Fr::inverse()
@@ -83,7 +83,7 @@ fn compute_next_target_sum(
         .map_err(|_| "sumcheck: barycentric denominator is zero")?;
 
     // Σ u_i * inv_denom_i
-    let mut acc = Fr::zero();
+    let mut acc = env.zero();
     for i in 0..BATCHED_RELATION_PARTIAL_LENGTH {
         acc = acc + (&round_univariate[i] * &inv_denoms[i]);
     }
@@ -93,11 +93,12 @@ fn compute_next_target_sum(
 
 #[inline(always)]
 fn partially_evaluate_pow(
+    env: &Env,
     gate_challenge: Fr,
     pow_partial_evaluation: Fr,
     round_challenge: Fr,
 ) -> Fr {
-    pow_partial_evaluation * (Fr::one() + round_challenge * (gate_challenge - Fr::one()))
+    pow_partial_evaluation * (env.one() + round_challenge * (gate_challenge - env.one()))
 }
 
 pub fn verify_sumcheck(
@@ -107,8 +108,8 @@ pub fn verify_sumcheck(
     vk: &VerificationKey,
 ) -> Result<(), &'static str> {
     let log_n = vk.log_circuit_size as usize;
-    let mut round_target = Fr::zero();
-    let mut pow_partial_evaluation = Fr::one();
+    let mut round_target = env.zero();
+    let mut pow_partial_evaluation = env.one();
 
     // 1) Each round sum check and next target/pow calculation
     for round in 0..log_n {
@@ -121,6 +122,7 @@ pub fn verify_sumcheck(
         let round_challenge = tp.sumcheck_u_challenges[round].clone();
         round_target = compute_next_target_sum(env, round_univariate, round_challenge.clone())?;
         pow_partial_evaluation = partially_evaluate_pow(
+            env,
             tp.gate_challenges[round].clone(),
             pow_partial_evaluation,
             round_challenge,

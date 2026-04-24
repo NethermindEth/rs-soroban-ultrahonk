@@ -4,7 +4,8 @@ use ultrahonk_test_utils::Fixture;
 
 fn test_env() -> Env {
     let env = Env::default();
-    env.ledger().set_protocol_version(25);
+    env.ledger().set_protocol_version(26);
+    env.cost_estimate().budget().reset_unlimited();
     env
 }
 

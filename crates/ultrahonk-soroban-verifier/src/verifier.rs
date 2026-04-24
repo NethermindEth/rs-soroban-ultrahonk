@@ -1,5 +1,6 @@
 //! UltraHonk verifier
 
+use crate::env::Bn254FrGenerator;
 use crate::{
     field::Fr,
     shplemini::verify_shplemini,
@@ -82,6 +83,7 @@ impl UltraHonkVerifier {
 
         // 4) Public delta
         t.rel_params.public_inputs_delta = Self::compute_public_input_delta(
+            env,
             public_inputs_bytes,
             &proof.pairing_point_object,
             t.rel_params.beta.clone(),
@@ -101,6 +103,7 @@ impl UltraHonkVerifier {
     }
 
     fn compute_public_input_delta(
+        env: &Env,
         public_inputs: &Bytes,
         pairing_point_object: &[Fr],
         beta: Fr,
@@ -108,17 +111,17 @@ impl UltraHonkVerifier {
         offset: u64,
         n: u64,
     ) -> Result<Fr, &'static str> {
-        let mut numerator = Fr::one();
-        let mut denominator = Fr::one();
+        let mut numerator = env.one();
+        let mut denominator = env.one();
 
-        let mut numerator_acc = gamma.clone() + &beta * &Fr::from_u64(n + offset);
-        let mut denominator_acc = &gamma - &(&beta * &Fr::from_u64(offset + 1));
+        let mut numerator_acc = gamma.clone() + &beta * &env.fr_from_u64(n + offset);
+        let mut denominator_acc = &gamma - &(&beta * &env.fr_from_u64(offset + 1));
 
         let mut idx = 0u32;
         while idx < public_inputs.len() {
             let mut arr = [0u8; 32];
             public_inputs.slice(idx..idx + 32).copy_into_slice(&mut arr);
-            let public_input = Fr::from_bytes(&arr);
+            let public_input = env.fr_from_array(&arr);
             numerator = numerator * (&numerator_acc + &public_input);
             denominator = denominator * (&denominator_acc + &public_input);
             numerator_acc = &numerator_acc + &beta;
@@ -131,9 +134,7 @@ impl UltraHonkVerifier {
             numerator_acc = &numerator_acc + &beta;
             denominator_acc = &denominator_acc - &beta;
         }
-        let denominator_inv = denominator
-            .inverse()
-            .ok_or("public input delta denom is zero")?;
+        let denominator_inv = denominator.inverse();
         Ok(numerator * denominator_inv)
     }
 }
