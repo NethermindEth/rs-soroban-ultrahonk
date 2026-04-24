@@ -29,8 +29,9 @@ pub fn fr_to_hex(fr: &Fr) -> String {
 pub fn g1_to_hex(pt: &G1Point) -> (String, String) {
     let mut x = String::from("0x");
     let mut y = String::from("0x");
-    x.push_str(&hex::encode(pt.x));
-    y.push_str(&hex::encode(pt.y));
+    let bytes = pt.0.to_array();
+    x.push_str(&hex::encode(&bytes[..32]));
+    y.push_str(&hex::encode(&bytes[32..]));
     (x, y)
 }
 

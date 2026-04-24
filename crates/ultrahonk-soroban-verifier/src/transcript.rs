@@ -15,8 +15,9 @@ use soroban_sdk::{Bytes, Env};
 
 fn push_point(buf: &mut Bytes, pt: &G1Point) {
     // Serialize a coordinate into two bn254::Fr limbs (lo136, hi<=118)
-    let (x_lo, x_hi) = coord_to_halves_be(&pt.x);
-    let (y_lo, y_hi) = coord_to_halves_be(&pt.y);
+    let bytes = pt.0.to_array();
+    let (x_lo, x_hi) = coord_to_halves_be(&bytes[..32]);
+    let (y_lo, y_hi) = coord_to_halves_be(&bytes[32..]);
     buf.extend_from_slice(&x_lo);
     buf.extend_from_slice(&x_hi);
     buf.extend_from_slice(&y_lo);

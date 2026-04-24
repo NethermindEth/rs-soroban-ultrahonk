@@ -10,9 +10,30 @@ use crate::PROOF_BYTES;
 use core::array;
 use soroban_sdk::{Bytes, Env};
 
+/// Contiguous proof layout byte sizes (bb v0.87.0); must sum to `PROOF_BYTES`.
+const PAIRING_OBJ_BYTES: usize = PAIRING_POINTS_SIZE * 32;
+/// w1, w2, w3, lookup_read_counts, lookup_read_tags, w4, lookup_inverses, z_perm.
+const PROOF_HEAD_G1_BYTES: usize = 8 * 128;
+const SUMCHECK_UNIV_BYTES: usize = CONST_PROOF_SIZE_LOG_N * BATCHED_RELATION_PARTIAL_LENGTH * 32;
+const SUMCHECK_EVAL_BYTES: usize = NUMBER_OF_ENTITIES * 32;
+const GEMINI_FOLD_COMMS_BYTES: usize = (CONST_PROOF_SIZE_LOG_N - 1) * 128;
+const GEMINI_A_EVAL_BYTES: usize = CONST_PROOF_SIZE_LOG_N * 32;
+const FINAL_TWO_G1_BYTES: usize = 2 * 128;
+
+const _: () = assert!(
+    PAIRING_OBJ_BYTES
+        + PROOF_HEAD_G1_BYTES
+        + SUMCHECK_UNIV_BYTES
+        + SUMCHECK_EVAL_BYTES
+        + GEMINI_FOLD_COMMS_BYTES
+        + GEMINI_A_EVAL_BYTES
+        + FINAL_TWO_G1_BYTES
+        == PROOF_BYTES
+);
+
 /// Split a 32-byte big-endian field element into (low136, high) limbs.
 #[inline]
-pub fn coord_to_halves_be(coord: &[u8; 32]) -> ([u8; 32], [u8; 32]) {
+pub fn coord_to_halves_be(coord: &[u8]) -> ([u8; 32], [u8; 32]) {
     let mut low = [0u8; 32];
     let mut high = [0u8; 32];
     low[15..].copy_from_slice(&coord[15..]); // 17 bytes
@@ -37,69 +58,79 @@ fn combine_limbs(lo: &[u8; 32], hi: &[u8; 32]) -> [u8; 32] {
     out
 }
 
+#[inline]
+fn fr_word32(env: &Env, blob: &[u8], word_idx: usize) -> Fr {
+    let o = word_idx * 32;
+    env.fr_from_array(blob[o..o + 32].try_into().expect("fr32"))
+}
+
+#[inline]
+fn g1_from_proof_chunk128(env: &Env, b: &[u8; 128]) -> G1Point {
+    let x = combine_limbs(
+        b[0..32].try_into().expect("x_lo"),
+        b[32..64].try_into().expect("x_hi"),
+    );
+    let y = combine_limbs(
+        b[64..96].try_into().expect("y_lo"),
+        b[96..128].try_into().expect("y_hi"),
+    );
+    G1Point::from_xy(env, &x, &y)
+}
+
+#[inline]
+fn g1_from_proof_blob_at(env: &Env, blob: &[u8], point_idx: usize) -> G1Point {
+    let o = point_idx * 128;
+    g1_from_proof_chunk128(env, blob[o..o + 128].try_into().expect("g1_128"))
+}
+
 /// Load a Proof from a byte array.
 ///
 /// Note (bb v0.87.0): G1 coordinates are encoded as two limbs per coordinate
 /// using the (lo136, hi<=118) split and stored in the order (x_lo, x_hi, y_lo, y_hi).
-pub fn load_proof(_env: &Env, proof_bytes: &Bytes) -> Proof {
+pub fn load_proof(env: &Env, proof_bytes: &Bytes) -> Proof {
     assert_eq!(proof_bytes.len() as usize, PROOF_BYTES, "proof bytes len");
     let mut boundary = 0u32;
 
-    fn bytes_to_g1_proof_point(bytes: &Bytes, cur: &mut u32) -> G1Point {
-        let x0 = read_bytes::<32>(bytes, cur);
-        let x1 = read_bytes::<32>(bytes, cur);
-        let y0 = read_bytes::<32>(bytes, cur);
-        let y1 = read_bytes::<32>(bytes, cur);
-        let x = combine_limbs(&x0, &x1);
-        let y = combine_limbs(&y0, &y1);
-        G1Point { x, y }
-    }
+    // 0) pairing point object — one host read, then in-memory Fr decode
+    let ppo = read_bytes::<PAIRING_OBJ_BYTES>(proof_bytes, &mut boundary);
+    let pairing_point_object = array::from_fn(|i| fr_word32(env, &ppo, i));
 
-    // Helper: bytesToFr (read next 32 bytes as Fr)
-    fn bytes_to_fr(bytes: &Bytes, cur: &mut u32) -> Fr {
-        let arr = read_bytes::<32>(bytes, cur);
-        bytes.env().fr_from_array(&arr)
-    }
+    // 1–4) eight consecutive G1 commitments
+    let g1_head = read_bytes::<PROOF_HEAD_G1_BYTES>(proof_bytes, &mut boundary);
+    let w1 = g1_from_proof_blob_at(env, &g1_head, 0);
+    let w2 = g1_from_proof_blob_at(env, &g1_head, 1);
+    let w3 = g1_from_proof_blob_at(env, &g1_head, 2);
+    let lookup_read_counts = g1_from_proof_blob_at(env, &g1_head, 3);
+    let lookup_read_tags = g1_from_proof_blob_at(env, &g1_head, 4);
+    let w4 = g1_from_proof_blob_at(env, &g1_head, 5);
+    let lookup_inverses = g1_from_proof_blob_at(env, &g1_head, 6);
+    let z_perm = g1_from_proof_blob_at(env, &g1_head, 7);
 
-    // 0) pairing point object
-    let pairing_point_object: [Fr; PAIRING_POINTS_SIZE] =
-        array::from_fn(|_| bytes_to_fr(proof_bytes, &mut boundary));
-
-    // 1) w1, w2, w3
-    let w1 = bytes_to_g1_proof_point(proof_bytes, &mut boundary);
-    let w2 = bytes_to_g1_proof_point(proof_bytes, &mut boundary);
-    let w3 = bytes_to_g1_proof_point(proof_bytes, &mut boundary);
-
-    // 2) lookup_read_counts, lookup_read_tags
-    let lookup_read_counts = bytes_to_g1_proof_point(proof_bytes, &mut boundary);
-    let lookup_read_tags = bytes_to_g1_proof_point(proof_bytes, &mut boundary);
-
-    // 3) w4
-    let w4 = bytes_to_g1_proof_point(proof_bytes, &mut boundary);
-
-    // 4) lookup_inverses, z_perm
-    let lookup_inverses = bytes_to_g1_proof_point(proof_bytes, &mut boundary);
-    let z_perm = bytes_to_g1_proof_point(proof_bytes, &mut boundary);
-
-    // 5) sumcheck_univariates (row-major, same order as the previous fill loop)
+    // 5) sumcheck_univariates (row-major)
+    let su = read_bytes::<SUMCHECK_UNIV_BYTES>(proof_bytes, &mut boundary);
     let sumcheck_univariates: [[Fr; BATCHED_RELATION_PARTIAL_LENGTH]; CONST_PROOF_SIZE_LOG_N] =
-        array::from_fn(|_| array::from_fn(|_| bytes_to_fr(proof_bytes, &mut boundary)));
+        array::from_fn(|r| {
+            array::from_fn(|c| fr_word32(env, &su, r * BATCHED_RELATION_PARTIAL_LENGTH + c))
+        });
 
     // 6) sumcheck_evaluations
-    let sumcheck_evaluations: [Fr; NUMBER_OF_ENTITIES] =
-        array::from_fn(|_| bytes_to_fr(proof_bytes, &mut boundary));
+    let se = read_bytes::<SUMCHECK_EVAL_BYTES>(proof_bytes, &mut boundary);
+    let sumcheck_evaluations = array::from_fn(|i| fr_word32(env, &se, i));
 
     // 7) gemini_fold_comms
-    let gemini_fold_comms: [G1Point; CONST_PROOF_SIZE_LOG_N - 1] =
-        array::from_fn(|_| bytes_to_g1_proof_point(proof_bytes, &mut boundary));
+    let gf = read_bytes::<GEMINI_FOLD_COMMS_BYTES>(proof_bytes, &mut boundary);
+    let gemini_fold_comms = array::from_fn(|i| g1_from_proof_blob_at(env, &gf, i));
 
     // 8) gemini_a_evaluations
-    let gemini_a_evaluations: [Fr; CONST_PROOF_SIZE_LOG_N] =
-        array::from_fn(|_| bytes_to_fr(proof_bytes, &mut boundary));
+    let ga = read_bytes::<GEMINI_A_EVAL_BYTES>(proof_bytes, &mut boundary);
+    let gemini_a_evaluations = array::from_fn(|i| fr_word32(env, &ga, i));
 
     // 9) shplonk_q, kzg_quotient
-    let shplonk_q = bytes_to_g1_proof_point(proof_bytes, &mut boundary);
-    let kzg_quotient = bytes_to_g1_proof_point(proof_bytes, &mut boundary);
+    let tail_g1 = read_bytes::<FINAL_TWO_G1_BYTES>(proof_bytes, &mut boundary);
+    let shplonk_q = g1_from_proof_chunk128(env, tail_g1[0..128].try_into().expect("shplonk"));
+    let kzg_quotient = g1_from_proof_chunk128(env, tail_g1[128..256].try_into().expect("kzg"));
+
+    debug_assert_eq!(boundary as usize, PROOF_BYTES);
 
     Proof {
         pairing_point_object,
@@ -121,22 +152,17 @@ pub fn load_proof(_env: &Env, proof_bytes: &Bytes) -> Proof {
 }
 
 /// Load a VerificationKey.
-pub fn load_vk_from_bytes(bytes: &Bytes) -> Option<VerificationKey> {
+pub fn load_vk_from_bytes(env: &Env, bytes: &Bytes) -> Option<VerificationKey> {
     const HEADER_WORDS: usize = 4;
     const NUM_POINTS: usize = 27;
-    const EXPECTED_LEN: usize = HEADER_WORDS * 8 + NUM_POINTS * 64;
+    const POINT_BLOB_LEN: usize = NUM_POINTS * 64;
+    const EXPECTED_LEN: usize = HEADER_WORDS * 8 + POINT_BLOB_LEN;
     if bytes.len() as usize != EXPECTED_LEN {
         return None;
     }
 
     fn read_u64(bytes: &Bytes, idx: &mut u32) -> u64 {
         u64::from_be_bytes(read_bytes::<8>(bytes, idx))
-    }
-    fn read_point(bytes: &Bytes, idx: &mut u32) -> Option<G1Point> {
-        let x = read_bytes::<32>(bytes, idx);
-        let y = read_bytes::<32>(bytes, idx);
-        // Curve, subgroup checks are executed in the Soroban host.
-        Some(G1Point { x, y })
     }
 
     let mut idx = 0u32;
@@ -145,65 +171,49 @@ pub fn load_vk_from_bytes(bytes: &Bytes) -> Option<VerificationKey> {
     let public_inputs_size = read_u64(bytes, &mut idx);
     let _pub_inputs_offset = read_u64(bytes, &mut idx);
 
-    let qm = read_point(bytes, &mut idx)?;
-    let qc = read_point(bytes, &mut idx)?;
-    let ql = read_point(bytes, &mut idx)?;
-    let qr = read_point(bytes, &mut idx)?;
-    let qo = read_point(bytes, &mut idx)?;
-    let q4 = read_point(bytes, &mut idx)?;
-    let q_lookup = read_point(bytes, &mut idx)?;
-    let q_arith = read_point(bytes, &mut idx)?;
-    let q_delta_range = read_point(bytes, &mut idx)?;
-    let q_elliptic = read_point(bytes, &mut idx)?;
-    let q_aux = read_point(bytes, &mut idx)?;
-    let q_poseidon2_external = read_point(bytes, &mut idx)?;
-    let q_poseidon2_internal = read_point(bytes, &mut idx)?;
-    let s1 = read_point(bytes, &mut idx)?;
-    let s2 = read_point(bytes, &mut idx)?;
-    let s3 = read_point(bytes, &mut idx)?;
-    let s4 = read_point(bytes, &mut idx)?;
-    let id1 = read_point(bytes, &mut idx)?;
-    let id2 = read_point(bytes, &mut idx)?;
-    let id3 = read_point(bytes, &mut idx)?;
-    let id4 = read_point(bytes, &mut idx)?;
-    let t1 = read_point(bytes, &mut idx)?;
-    let t2 = read_point(bytes, &mut idx)?;
-    let t3 = read_point(bytes, &mut idx)?;
-    let t4 = read_point(bytes, &mut idx)?;
-    let lagrange_first = read_point(bytes, &mut idx)?;
-    let lagrange_last = read_point(bytes, &mut idx)?;
+    // One contiguous read for all G1 points (27 × 64 bytes), then parse in layout order.
+    let points_bytes = read_bytes::<POINT_BLOB_LEN>(bytes, &mut idx);
+    let pts: [G1Point; NUM_POINTS] = array::from_fn(|i| {
+        let off = i * 64;
+        G1Point::from_bytes(
+            env,
+            <&[u8; 64]>::try_from(&points_bytes[off..off + 64]).unwrap(),
+        )
+    });
+    debug_assert_eq!(idx as usize, EXPECTED_LEN);
 
+    let mut it = pts.into_iter();
     Some(VerificationKey {
         circuit_size,
         log_circuit_size,
         public_inputs_size,
-        qm,
-        qc,
-        ql,
-        qr,
-        qo,
-        q4,
-        q_lookup,
-        q_arith,
-        q_delta_range,
-        q_elliptic,
-        q_aux,
-        q_poseidon2_external,
-        q_poseidon2_internal,
-        s1,
-        s2,
-        s3,
-        s4,
-        id1,
-        id2,
-        id3,
-        id4,
-        t1,
-        t2,
-        t3,
-        t4,
-        lagrange_first,
-        lagrange_last,
+        qm: it.next()?,
+        qc: it.next()?,
+        ql: it.next()?,
+        qr: it.next()?,
+        qo: it.next()?,
+        q4: it.next()?,
+        q_lookup: it.next()?,
+        q_arith: it.next()?,
+        q_delta_range: it.next()?,
+        q_elliptic: it.next()?,
+        q_aux: it.next()?,
+        q_poseidon2_external: it.next()?,
+        q_poseidon2_internal: it.next()?,
+        s1: it.next()?,
+        s2: it.next()?,
+        s3: it.next()?,
+        s4: it.next()?,
+        id1: it.next()?,
+        id2: it.next()?,
+        id3: it.next()?,
+        id4: it.next()?,
+        t1: it.next()?,
+        t2: it.next()?,
+        t3: it.next()?,
+        t4: it.next()?,
+        lagrange_first: it.next()?,
+        lagrange_last: it.next()?,
     })
 }
 

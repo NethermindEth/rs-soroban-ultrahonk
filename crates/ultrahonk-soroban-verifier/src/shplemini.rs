@@ -1,5 +1,5 @@
 //! Shplemini batch-opening verifier for BN254
-use crate::ec::helpers::negate;
+
 use crate::ec::{g1_msm, pairing_check};
 use crate::env::Bn254FrGenerator;
 use crate::field::batch_inverse;
@@ -8,6 +8,8 @@ use crate::types::{
     G1Point, Proof, Transcript, VerificationKey, CONST_PROOF_SIZE_LOG_N, NUMBER_OF_ENTITIES,
     NUMBER_TO_BE_SHIFTED, NUMBER_UNSHIFTED,
 };
+use core::array::repeat;
+use core::ops::Neg;
 use soroban_sdk::Env;
 
 /// Shplemini verification
@@ -83,7 +85,7 @@ pub fn verify_shplemini(
     const TOTAL: usize = 1 + NUMBER_OF_ENTITIES + CONST_PROOF_SIZE_LOG_N + 1;
     trace!("total = {}", TOTAL);
     let mut scalars = env.zero_array::<TOTAL>();
-    let mut coms = [G1Point::infinity(); TOTAL];
+    let mut coms = repeat::<G1Point, TOTAL>(G1Point::infinity(env));
 
     // 3) compute shplonk weights
     let unshifted = &tp.shplonk_nu * &neg0 + &pos0;
@@ -92,7 +94,7 @@ pub fn verify_shplemini(
     let neg_shifted = -&shifted;
     // 4) shplonk_Q
     scalars[0] = env.one();
-    coms[0] = proof.shplonk_q;
+    coms[0] = proof.shplonk_q.clone();
 
     // 5) weight sumcheck evals
     let mut rho_pow = env.one();
@@ -114,73 +116,65 @@ pub fn verify_shplemini(
         eval_acc = eval_acc + &(eval * &rho_pow);
         rho_pow = rho_pow * &tp.rho;
     }
-    // 6) load VK & proof
+    // 6) load VK & proof (MSM layout must match Solidity: VK order, then proof wires unshifted + shifted)
     {
         let mut j = 1;
-        macro_rules! push {
-            ($f:ident) => {{
-                coms[j] = vk.$f.clone();
-                j += 1;
-            }};
+        macro_rules! push_vk {
+            ($($field:ident),+ $(,)?) => {
+                $(
+                    coms[j] = vk.$field.clone();
+                    j += 1;
+                )+
+            };
         }
-        push!(qm);
-        push!(qc);
-        push!(ql);
-        push!(qr);
-        push!(qo);
-        push!(q4);
-        // Match Solidity VK commitment order strictly
-        // 7..13: qLookup, qArith, qDeltaRange, qElliptic, qAux, qPoseidon2External, qPoseidon2Internal
-        push!(q_lookup);
-        push!(q_arith);
-        push!(q_delta_range);
-        push!(q_elliptic);
-        push!(q_aux);
-        push!(q_poseidon2_external);
-        push!(q_poseidon2_internal);
-        push!(s1);
-        push!(s2);
-        push!(s3);
-        push!(s4);
-        push!(id1);
-        push!(id2);
-        push!(id3);
-        push!(id4);
-        push!(t1);
-        push!(t2);
-        push!(t3);
-        push!(t4);
-        push!(lagrange_first);
-        push!(lagrange_last);
+        push_vk![
+            qm,
+            qc,
+            ql,
+            qr,
+            qo,
+            q4,
+            q_lookup,
+            q_arith,
+            q_delta_range,
+            q_elliptic,
+            q_aux,
+            q_poseidon2_external,
+            q_poseidon2_internal,
+            s1,
+            s2,
+            s3,
+            s4,
+            id1,
+            id2,
+            id3,
+            id4,
+            t1,
+            t2,
+            t3,
+            t4,
+            lagrange_first,
+            lagrange_last
+        ];
 
-        coms[j] = proof.w1;
-        j += 1;
-        coms[j] = proof.w2;
-        j += 1;
-        coms[j] = proof.w3;
-        j += 1;
-        coms[j] = proof.w4;
-        j += 1;
-        coms[j] = proof.z_perm;
-        j += 1;
-        coms[j] = proof.lookup_inverses;
-        j += 1;
-        coms[j] = proof.lookup_read_counts;
-        j += 1;
-        coms[j] = proof.lookup_read_tags;
-        j += 1;
-
-        coms[j] = proof.w1;
-        j += 1;
-        coms[j] = proof.w2;
-        j += 1;
-        coms[j] = proof.w3;
-        j += 1;
-        coms[j] = proof.w4;
-        j += 1;
-        coms[j] = proof.z_perm;
-        j += 1;
-        let _ = j; // silence "assigned but never read" in non-trace builds
+        for p in [
+            &proof.w1,
+            &proof.w2,
+            &proof.w3,
+            &proof.w4,
+            &proof.z_perm,
+            &proof.lookup_inverses,
+            &proof.lookup_read_counts,
+            &proof.lookup_read_tags,
+        ] {
+            coms[j] = p.clone();
+            j += 1;
+        }
+        for p in [&proof.w1, &proof.w2, &proof.w3, &proof.w4, &proof.z_perm] {
+            coms[j] = p.clone();
+            j += 1;
+        }
+        let _ = j;
     }
 
     // 7) folding rounds — use batch-inverted denominators
@@ -215,29 +209,29 @@ pub fn verify_shplemini(
 
         v_pow = v_pow * &nu_sq;
 
-        coms[base + j - 1] = proof.gemini_fold_comms[j - 1];
+        coms[base + j - 1] = proof.gemini_fold_comms[j - 1].clone();
     }
 
     // Fill remaining (dummy) fold commitments so MSM layout matches Solidity (total 27 entries)
     coms[((log_n - 1) + base)..((CONST_PROOF_SIZE_LOG_N - 1) + base)]
-        .copy_from_slice(&proof.gemini_fold_comms[(log_n - 1)..(CONST_PROOF_SIZE_LOG_N - 1)]);
+        .clone_from_slice(&proof.gemini_fold_comms[(log_n - 1)..(CONST_PROOF_SIZE_LOG_N - 1)]);
 
     // 10) add generator
     // Generator goes right after all fold commitments (27 entries)
     let one_idx = base + (CONST_PROOF_SIZE_LOG_N - 1);
     trace!("one_idx = {}", one_idx);
-    coms[one_idx] = G1Point::generator();
+    coms[one_idx] = G1Point::generator(env);
     scalars[one_idx] = const_acc;
 
     // 11) add quotient
     let q_idx = one_idx + 1;
     trace!("q_idx = {}", q_idx);
-    coms[q_idx] = proof.kzg_quotient;
+    coms[q_idx] = proof.kzg_quotient.clone();
     scalars[q_idx] = tp.shplonk_z.clone();
 
     // 12) MSM + pairing
     let p0 = g1_msm(env, &coms, &scalars)?;
-    let p1 = negate(env, &proof.kzg_quotient);
+    let p1 = proof.kzg_quotient.0.clone().neg();
     if pairing_check(env, &p0, &p1) {
         Ok(())
     } else {

@@ -31,11 +31,6 @@ const LHS_G2_BYTES: [u8; 128] = [
 const G1_INFINITY_AFFINE_BYTES: [u8; 64] = [0u8; 64];
 
 #[inline(always)]
-fn g1_from_point(env: &Env, pt: &G1Point) -> Bn254G1Affine {
-    Bn254G1Affine::from_array(env, &pt.to_bytes())
-}
-
-#[inline(always)]
 pub fn rhs_g2_affine(env: &Env) -> Bn254G2Affine {
     Bn254G2Affine::from_array(env, &RHS_G2_BYTES)
 }
@@ -57,8 +52,7 @@ pub fn g1_msm(env: &Env, coms: &[G1Point], scalars: &[Fr]) -> Result<Bn254G1Affi
         if s.is_zero() {
             continue;
         }
-        let p = g1_from_point(env, c);
-        let term = bn.g1_mul(&p, &s.0);
+        let term = bn.g1_mul(c.as_bn254(), &s.0);
         acc = bn.g1_add(&acc, &term);
     }
     Ok(acc)
@@ -74,18 +68,4 @@ pub fn pairing_check(env: &Env, p0: &Bn254G1Affine, p1: &Bn254G1Affine) -> bool 
     g2s.push_back(rhs_g2_affine(env));
     g2s.push_back(lhs_g2_affine(env));
     env.crypto().bn254().pairing_check(g1s, g2s)
-}
-
-pub mod helpers {
-    use super::*;
-
-    #[inline(always)]
-    pub fn to_affine(env: &Env, pt: &G1Point) -> Bn254G1Affine {
-        g1_from_point(env, pt)
-    }
-
-    #[inline(always)]
-    pub fn negate(env: &Env, pt: &G1Point) -> Bn254G1Affine {
-        -g1_from_point(env, pt)
-    }
 }

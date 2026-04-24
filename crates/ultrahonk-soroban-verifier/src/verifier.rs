@@ -33,7 +33,7 @@ impl UltraHonkVerifier {
     }
 
     pub fn new(env: &Env, vk_bytes: &Bytes) -> Result<Self, VerifyError> {
-        load_vk_from_bytes(vk_bytes)
+        load_vk_from_bytes(env, vk_bytes)
             .map(|vk| Self::new_with_vk(env, vk))
             .ok_or(VerifyError::InvalidInput("vk parse error"))
     }
