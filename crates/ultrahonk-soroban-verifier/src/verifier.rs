@@ -86,8 +86,8 @@ impl UltraHonkVerifier {
             env,
             public_inputs_bytes,
             &proof.pairing_point_object,
-            t.rel_params.beta.clone(),
-            t.rel_params.gamma.clone(),
+            &t.rel_params.beta,
+            &t.rel_params.gamma,
             pub_inputs_offset,
             self.vk.circuit_size,
         )
@@ -106,16 +106,18 @@ impl UltraHonkVerifier {
         env: &Env,
         public_inputs: &Bytes,
         pairing_point_object: &[Fr],
-        beta: Fr,
-        gamma: Fr,
+        beta: &Fr,
+        gamma: &Fr,
         offset: u64,
         n: u64,
     ) -> Result<Fr, &'static str> {
         let mut numerator = env.one();
         let mut denominator = env.one();
 
-        let mut numerator_acc = gamma.clone() + &beta * &env.fr_from_u64(n + offset);
-        let mut denominator_acc = &gamma - &(&beta * &env.fr_from_u64(offset + 1));
+        let beta_n = beta * &env.fr_from_u64(n + offset);
+        let beta_off = beta * &env.fr_from_u64(offset + 1);
+        let mut numerator_acc = gamma + beta_n;
+        let mut denominator_acc = gamma - &beta_off;
 
         let mut idx = 0u32;
         while idx < public_inputs.len() {
@@ -124,15 +126,15 @@ impl UltraHonkVerifier {
             let public_input = env.fr_from_array(&arr);
             numerator = numerator * (&numerator_acc + &public_input);
             denominator = denominator * (&denominator_acc + &public_input);
-            numerator_acc = &numerator_acc + &beta;
-            denominator_acc = &denominator_acc - &beta;
+            numerator_acc = &numerator_acc + beta;
+            denominator_acc = &denominator_acc - beta;
             idx += 32;
         }
         for public_input in pairing_point_object {
             numerator = &numerator * &(&numerator_acc + public_input);
             denominator = &denominator * &(&denominator_acc + public_input);
-            numerator_acc = &numerator_acc + &beta;
-            denominator_acc = &denominator_acc - &beta;
+            numerator_acc = &numerator_acc + beta;
+            denominator_acc = &denominator_acc - beta;
         }
         let denominator_inv = denominator.inverse();
         Ok(numerator * denominator_inv)

@@ -1,6 +1,6 @@
 use crate::field::Fr;
-use crate::types::G1Point;
 
+use crate::types::G1Point;
 #[cfg(not(feature = "std"))]
 use alloc::string::String;
 

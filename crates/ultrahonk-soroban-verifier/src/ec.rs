@@ -1,7 +1,8 @@
-use crate::{field::Fr, types::G1Point};
+use crate::field::Fr;
+use crate::types::G1Point;
 use soroban_sdk::{
-    crypto::bn254::{Bn254Fr, Bn254G1Affine, Bn254G2Affine},
-    BytesN, Env, Vec,
+    crypto::bn254::{Bn254G1Affine, Bn254G2Affine},
+    Env, Vec,
 };
 
 const RHS_G2_BYTES: [u8; 128] = [
@@ -26,10 +27,8 @@ const LHS_G2_BYTES: [u8; 128] = [
     0x11, 0xe6, 0xdd, 0x3f, 0x96, 0xe6, 0xce, 0xa2, 0x85, 0x4a, 0x87, 0xd4, 0xda, 0xcc, 0x5e, 0x55,
 ];
 
-#[inline(always)]
-fn fr_to_bn254(env: &Env, fr: &Fr) -> Bn254Fr {
-    Bn254Fr::from_bytes(BytesN::from_array(env, &fr.to_bytes()))
-}
+/// Uncompressed G1 point at infinity (64 zero bytes), Ethereum order x||y.
+const G1_INFINITY_AFFINE_BYTES: [u8; 64] = [0u8; 64];
 
 #[inline(always)]
 fn g1_from_point(env: &Env, pt: &G1Point) -> Bn254G1Affine {
@@ -53,14 +52,13 @@ pub fn g1_msm(env: &Env, coms: &[G1Point], scalars: &[Fr]) -> Result<Bn254G1Affi
         return Err("msm len mismatch");
     }
     let bn = env.crypto().bn254();
-    let mut acc = Bn254G1Affine::from_array(env, &G1Point::infinity().to_bytes());
+    let mut acc = Bn254G1Affine::from_array(env, &G1_INFINITY_AFFINE_BYTES);
     for (c, s) in coms.iter().zip(scalars.iter()) {
         if s.is_zero() {
             continue;
         }
         let p = g1_from_point(env, c);
-        let scalar = fr_to_bn254(env, s);
-        let term = bn.g1_mul(&p, &scalar);
+        let term = bn.g1_mul(&p, &s.0);
         acc = bn.g1_add(&acc, &term);
     }
     Ok(acc)

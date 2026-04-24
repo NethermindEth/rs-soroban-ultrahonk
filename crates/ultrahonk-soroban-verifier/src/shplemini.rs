@@ -52,8 +52,8 @@ pub fn verify_shplemini(
 
     // fold round denominators: r^j * (1 - u_j) + u_j, for j = log_n down to 1
     for j in (1..=log_n).rev() {
-        let u = tp.sumcheck_u_challenges[j - 1].clone();
-        to_invert[3 + (log_n - j)] = &r_pows[j - 1] * &(env.one() - &u) + &u;
+        let u = &tp.sumcheck_u_challenges[j - 1];
+        to_invert[3 + (log_n - j)] = &r_pows[j - 1] * &(env.one() - u) + u;
     }
 
     // further folding denominators: (z - r^j) and (z + r^j) for j = 1..log_n
@@ -88,6 +88,8 @@ pub fn verify_shplemini(
     // 3) compute shplonk weights
     let unshifted = &tp.shplonk_nu * &neg0 + &pos0;
     let shifted = gemini_r_inv * (&pos0 - &(&tp.shplonk_nu * &neg0));
+    let neg_unshifted = -&unshifted;
+    let neg_shifted = -&shifted;
     // 4) shplonk_Q
     scalars[0] = env.one();
     coms[0] = proof.shplonk_q;
@@ -104,9 +106,9 @@ pub fn verify_shplemini(
         .enumerate()
     {
         let scalar = if idx < NUMBER_UNSHIFTED {
-            -unshifted.clone()
+            neg_unshifted.clone()
         } else {
-            -shifted.clone()
+            neg_shifted.clone()
         } * &rho_pow;
         scalars[1 + idx] = scalar;
         eval_acc = eval_acc + &(eval * &rho_pow);
@@ -185,18 +187,20 @@ pub fn verify_shplemini(
     let mut fold_pos = env.zero_array::<CONST_PROOF_SIZE_LOG_N>();
     let mut cur = eval_acc;
     for j in (1..=log_n).rev() {
-        let r2 = r_pows[j - 1].clone();
-        let u = tp.sumcheck_u_challenges[j - 1].clone();
-        let num = &r2 * &cur * env.fr_from_u64(2)
-            - &(&proof.gemini_a_evaluations[j - 1] * &(&r2 * &(env.one() - &u) - &u));
+        let r2 = &r_pows[j - 1];
+        let u = &tp.sumcheck_u_challenges[j - 1];
+        let fold_lin = r2 * &(env.one() - u) - u;
+        let num =
+            r2 * &cur * env.fr_from_u64(2) - &(&proof.gemini_a_evaluations[j - 1] * &fold_lin);
         let den_inv = inverted[3 + (log_n - j)].clone();
         cur = num * &den_inv;
         fold_pos[j - 1] = cur.clone();
     }
     // 8) accumulate constant term
+    let nu_sq = &tp.shplonk_nu * &tp.shplonk_nu;
     let mut const_acc =
         &fold_pos[0] * &pos0 + &(&proof.gemini_a_evaluations[0] * &tp.shplonk_nu * &neg0);
-    let mut v_pow = &tp.shplonk_nu * &tp.shplonk_nu;
+    let mut v_pow = nu_sq.clone();
     // 9) further folding + commit — use batch-inverted denominators
     // Base index where fold commitments start
     let base = 1 + NUMBER_OF_ENTITIES;
@@ -209,7 +213,7 @@ pub fn verify_shplemini(
         scalars[base + j - 1] = -(&sp + &sn);
         const_acc = const_acc + &(&proof.gemini_a_evaluations[j] * &sn) + &(&fold_pos[j] * &sp);
 
-        v_pow = v_pow * &tp.shplonk_nu * &tp.shplonk_nu;
+        v_pow = v_pow * &nu_sq;
 
         coms[base + j - 1] = proof.gemini_fold_comms[j - 1];
     }

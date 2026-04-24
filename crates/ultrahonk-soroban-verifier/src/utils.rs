@@ -11,6 +11,7 @@ use core::array;
 use soroban_sdk::{Bytes, Env};
 
 /// Split a 32-byte big-endian field element into (low136, high) limbs.
+#[inline]
 pub fn coord_to_halves_be(coord: &[u8; 32]) -> ([u8; 32], [u8; 32]) {
     let mut low = [0u8; 32];
     let mut high = [0u8; 32];
@@ -19,6 +20,7 @@ pub fn coord_to_halves_be(coord: &[u8; 32]) -> ([u8; 32], [u8; 32]) {
     (low, high)
 }
 
+#[inline]
 fn read_bytes<const N: usize>(bytes: &Bytes, idx: &mut u32) -> [u8; N] {
     let mut out = [0u8; N];
     let end = *idx + N as u32;
@@ -27,6 +29,7 @@ fn read_bytes<const N: usize>(bytes: &Bytes, idx: &mut u32) -> [u8; N] {
     out
 }
 
+#[inline]
 fn combine_limbs(lo: &[u8; 32], hi: &[u8; 32]) -> [u8; 32] {
     let mut out = [0u8; 32];
     out[..15].copy_from_slice(&hi[17..]);
@@ -38,7 +41,7 @@ fn combine_limbs(lo: &[u8; 32], hi: &[u8; 32]) -> [u8; 32] {
 ///
 /// Note (bb v0.87.0): G1 coordinates are encoded as two limbs per coordinate
 /// using the (lo136, hi<=118) split and stored in the order (x_lo, x_hi, y_lo, y_hi).
-pub fn load_proof(env: &Env, proof_bytes: &Bytes) -> Proof {
+pub fn load_proof(_env: &Env, proof_bytes: &Bytes) -> Proof {
     assert_eq!(proof_bytes.len() as usize, PROOF_BYTES, "proof bytes len");
     let mut boundary = 0u32;
 
@@ -78,14 +81,9 @@ pub fn load_proof(env: &Env, proof_bytes: &Bytes) -> Proof {
     let lookup_inverses = bytes_to_g1_proof_point(proof_bytes, &mut boundary);
     let z_perm = bytes_to_g1_proof_point(proof_bytes, &mut boundary);
 
-    // 5) sumcheck_univariates
-    let mut sumcheck_univariates =
-        array::repeat(env.zero_array::<BATCHED_RELATION_PARTIAL_LENGTH>());
-    for univariate in sumcheck_univariates.iter_mut() {
-        for element in univariate.iter_mut() {
-            *element = bytes_to_fr(proof_bytes, &mut boundary);
-        }
-    }
+    // 5) sumcheck_univariates (row-major, same order as the previous fill loop)
+    let sumcheck_univariates: [[Fr; BATCHED_RELATION_PARTIAL_LENGTH]; CONST_PROOF_SIZE_LOG_N] =
+        array::from_fn(|_| array::from_fn(|_| bytes_to_fr(proof_bytes, &mut boundary)));
 
     // 6) sumcheck_evaluations
     let sumcheck_evaluations: [Fr; NUMBER_OF_ENTITIES] =

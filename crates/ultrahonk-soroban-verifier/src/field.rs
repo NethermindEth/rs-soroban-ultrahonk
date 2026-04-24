@@ -1,6 +1,7 @@
 pub use soroban_sdk::crypto::bn254::Bn254Fr as ArkFr;
 
 use core::ops::{Add, Mul, Neg, Sub};
+use soroban_sdk::U256;
 
 use crate::env::Bn254FrGenerator;
 
@@ -14,16 +15,19 @@ impl Fr {
         self.0.to_bytes().to_array()
     }
 
+    #[inline(always)]
     pub fn inverse(&self) -> Self {
         Self(self.0.inv())
     }
 
+    #[inline(always)]
     pub fn pow(&self, exp: u64) -> Self {
         Self(self.0.pow(exp))
     }
 
+    #[inline(always)]
     pub fn is_zero(&self) -> bool {
-        self == &self.0.env().zero()
+        *self.0.as_u256() == U256::from_u32(self.0.env(), 0)
     }
 }
 
