@@ -36,8 +36,9 @@ fn split_challenge_from_be32(env: &Env, challenge_bytes: &[u8; 32]) -> (Fr, Fr) 
     )
 }
 
-fn split_challenge(env: &Env, challenge: &Fr) -> (Fr, Fr) {
-    split_challenge_from_be32(env, &challenge.to_bytes())
+fn split_challenge(challenge: &Fr) -> (Fr, Fr) {
+    let env = challenge.0.env();
+    split_challenge_from_be32(&env, &challenge.to_bytes())
 }
 
 #[inline(always)]
@@ -76,7 +77,7 @@ fn generate_eta_challenge(
     let (eta, eta_two) = split_challenge_from_be32(env, &first_bytes);
     let prev_bytes = Bytes::from_array(env, &first_bytes);
     let second = hash_to_fr(&prev_bytes);
-    let (eta_three, _) = split_challenge(env, &second);
+    let (eta_three, _) = split_challenge(&second);
 
     (eta, eta_two, eta_three, second)
 }
@@ -96,7 +97,7 @@ fn generate_beta_and_gamma_challenges(
         push_point(&mut data, w);
     }
     let next_previous_challenge = hash_to_fr(&data);
-    let (beta, gamma) = split_challenge(env, &next_previous_challenge);
+    let (beta, gamma) = split_challenge(&next_previous_challenge);
     (beta, gamma, next_previous_challenge)
 }
 
@@ -113,14 +114,14 @@ fn generate_alpha_challenges(
     let mut next_previous_challenge = hash_to_fr(&data);
 
     let mut alphas = Fr::zero_array::<NUMBER_OF_ALPHAS>(env);
-    let (a0, a1) = split_challenge(env, &next_previous_challenge);
+    let (a0, a1) = split_challenge(&next_previous_challenge);
     alphas[0] = a0;
     alphas[1] = a1;
 
     for i in 1..(NUMBER_OF_ALPHAS / 2) {
         let next_bytes = Bytes::from_array(env, &next_previous_challenge.to_bytes());
         next_previous_challenge = hash_to_fr(&next_bytes);
-        let (lo, hi) = split_challenge(env, &next_previous_challenge);
+        let (lo, hi) = split_challenge(&next_previous_challenge);
         alphas[2 * i] = lo;
         alphas[2 * i + 1] = hi;
     }
@@ -128,7 +129,7 @@ fn generate_alpha_challenges(
     if (NUMBER_OF_ALPHAS & 1) == 1 && NUMBER_OF_ALPHAS > 2 {
         let next_bytes = Bytes::from_array(env, &next_previous_challenge.to_bytes());
         next_previous_challenge = hash_to_fr(&next_bytes);
-        let (last, _) = split_challenge(env, &next_previous_challenge);
+        let (last, _) = split_challenge(&next_previous_challenge);
         alphas[NUMBER_OF_ALPHAS - 1] = last;
     }
 
@@ -173,7 +174,7 @@ fn generate_gate_challenges(
     for challenge in gate_challenges.iter_mut() {
         let next_bytes = Bytes::from_array(env, &next_previous_challenge.to_bytes());
         next_previous_challenge = hash_to_fr(&next_bytes);
-        *challenge = split_challenge(env, &next_previous_challenge).0;
+        *challenge = split_challenge(&next_previous_challenge).0;
     }
     (gate_challenges, next_previous_challenge)
 }
@@ -192,7 +193,7 @@ fn generate_sumcheck_challenges(
             data.extend_from_slice(&c.to_bytes());
         }
         next_previous_challenge = hash_to_fr(&data);
-        *challenge = split_challenge(env, &next_previous_challenge).0;
+        *challenge = split_challenge(&next_previous_challenge).0;
     }
     (sumcheck_challenges, next_previous_challenge)
 }
@@ -204,7 +205,7 @@ fn generate_rho_challenge(env: &Env, proof: &Proof, previous_challenge: Fr) -> (
         data.extend_from_slice(&e.to_bytes());
     }
     let next_previous_challenge = hash_to_fr(&data);
-    let rho = split_challenge(env, &next_previous_challenge).0;
+    let rho = split_challenge(&next_previous_challenge).0;
     (rho, next_previous_challenge)
 }
 
@@ -215,7 +216,7 @@ fn generate_gemini_r_challenge(env: &Env, proof: &Proof, previous_challenge: Fr)
         push_point(&mut data, pt);
     }
     let next_previous_challenge = hash_to_fr(&data);
-    let gemini_r = split_challenge(env, &next_previous_challenge).0;
+    let gemini_r = split_challenge(&next_previous_challenge).0;
     (gemini_r, next_previous_challenge)
 }
 
@@ -226,7 +227,7 @@ fn generate_shplonk_nu_challenge(env: &Env, proof: &Proof, previous_challenge: F
         data.extend_from_slice(&a.to_bytes());
     }
     let next_previous_challenge = hash_to_fr(&data);
-    let shplonk_nu = split_challenge(env, &next_previous_challenge).0;
+    let shplonk_nu = split_challenge(&next_previous_challenge).0;
     (shplonk_nu, next_previous_challenge)
 }
 
@@ -235,7 +236,7 @@ fn generate_shplonk_z_challenge(env: &Env, proof: &Proof, previous_challenge: Fr
     data.extend_from_slice(&previous_challenge.to_bytes());
     push_point(&mut data, &proof.shplonk_q);
     let next_previous_challenge = hash_to_fr(&data);
-    let shplonk_z = split_challenge(env, &next_previous_challenge).0;
+    let shplonk_z = split_challenge(&next_previous_challenge).0;
     (shplonk_z, next_previous_challenge)
 }
 
