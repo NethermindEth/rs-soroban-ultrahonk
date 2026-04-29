@@ -1,6 +1,5 @@
 //! Sum-check verifier
 
-use crate::env::Bn254FrGenerator;
 use crate::{
     field::{batch_inverse, Fr},
     relations::accumulate_relation_evaluations,
@@ -69,21 +68,21 @@ fn compute_next_target_sum(
 ) -> Result<Fr, &'static str> {
     // B(χ) = ∏ (χ - i) for i in 0..8
     // Also collect denominators for batch inversion
-    let mut denoms = env.zero_array::<BATCHED_RELATION_PARTIAL_LENGTH>();
-    let mut b_poly = env.one();
+    let mut denoms = Fr::zero_array::<BATCHED_RELATION_PARTIAL_LENGTH>(env);
+    let mut b_poly = Fr::one(env);
     for i in 0..BATCHED_RELATION_PARTIAL_LENGTH {
-        let diff = &round_challenge - &env.fr_from_u64(i as u64);
+        let diff = &round_challenge - &Fr::from_u64(env, i as u64);
         b_poly = b_poly * &diff;
-        denoms[i] = &env.fr_from_array(&BARY_BYTES[i]) * &diff;
+        denoms[i] = &Fr::from_array(env, &BARY_BYTES[i]) * &diff;
     }
 
     // Batch invert all 8 denominators with a single Fr::inverse()
-    let mut inv_denoms = env.zero_array::<BATCHED_RELATION_PARTIAL_LENGTH>();
+    let mut inv_denoms = Fr::zero_array::<BATCHED_RELATION_PARTIAL_LENGTH>(env);
     batch_inverse(&denoms, &mut inv_denoms)
         .map_err(|_| "sumcheck: barycentric denominator is zero")?;
 
     // Σ u_i * inv_denom_i
-    let mut acc = env.zero();
+    let mut acc = Fr::zero(env);
     for i in 0..BATCHED_RELATION_PARTIAL_LENGTH {
         acc = acc + (&round_univariate[i] * &inv_denoms[i]);
     }
@@ -98,7 +97,7 @@ fn partially_evaluate_pow(
     pow_partial_evaluation: Fr,
     round_challenge: Fr,
 ) -> Fr {
-    pow_partial_evaluation * (env.one() + round_challenge * (gate_challenge - env.one()))
+    pow_partial_evaluation * (Fr::one(env) + round_challenge * (gate_challenge - Fr::one(env)))
 }
 
 pub fn verify_sumcheck(
@@ -108,8 +107,8 @@ pub fn verify_sumcheck(
     vk: &VerificationKey,
 ) -> Result<(), &'static str> {
     let log_n = vk.log_circuit_size as usize;
-    let mut round_target = env.zero();
-    let mut pow_partial_evaluation = env.one();
+    let mut round_target = Fr::zero(env);
+    let mut pow_partial_evaluation = Fr::one(env);
 
     // 1) Each round sum check and next target/pow calculation
     for round in 0..log_n {

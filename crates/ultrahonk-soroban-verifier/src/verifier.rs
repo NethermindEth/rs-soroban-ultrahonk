@@ -1,6 +1,5 @@
 //! UltraHonk verifier
 
-use crate::env::Bn254FrGenerator;
 use crate::{
     field::Fr,
     shplemini::verify_shplemini,
@@ -111,11 +110,11 @@ impl UltraHonkVerifier {
         offset: u64,
         n: u64,
     ) -> Result<Fr, &'static str> {
-        let mut numerator = env.one();
-        let mut denominator = env.one();
+        let mut numerator = Fr::one(env);
+        let mut denominator = Fr::one(env);
 
-        let beta_n = beta * &env.fr_from_u64(n + offset);
-        let beta_off = beta * &env.fr_from_u64(offset + 1);
+        let beta_n = beta * &Fr::from_u64(env, n + offset);
+        let beta_off = beta * &Fr::from_u64(env, offset + 1);
         let mut numerator_acc = gamma + beta_n;
         let mut denominator_acc = gamma - &beta_off;
 
@@ -123,7 +122,7 @@ impl UltraHonkVerifier {
         while idx < public_inputs.len() {
             let mut arr = [0u8; 32];
             public_inputs.slice(idx..idx + 32).copy_into_slice(&mut arr);
-            let public_input = env.fr_from_array(&arr);
+            let public_input = Fr::from_array(env, &arr);
             numerator = numerator * (&numerator_acc + &public_input);
             denominator = denominator * (&denominator_acc + &public_input);
             numerator_acc = &numerator_acc + beta;

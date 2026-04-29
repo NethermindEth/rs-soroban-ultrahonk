@@ -1,8 +1,7 @@
 //! Shplemini batch-opening verifier for BN254
 
 use crate::ec::{g1_msm, pairing_check};
-use crate::env::Bn254FrGenerator;
-use crate::field::batch_inverse;
+use crate::field::{batch_inverse, Fr};
 use crate::trace;
 use crate::types::{
     G1Point, Proof, Transcript, VerificationKey, CONST_PROOF_SIZE_LOG_N, NUMBER_OF_ENTITIES,
@@ -21,7 +20,7 @@ pub fn verify_shplemini(
 ) -> Result<(), &'static str> {
     // 1) r^{2^i}
     let log_n = vk.log_circuit_size as usize;
-    let mut r_pows = env.zero_array::<CONST_PROOF_SIZE_LOG_N>();
+    let mut r_pows = Fr::zero_array::<CONST_PROOF_SIZE_LOG_N>(env);
     r_pows[0] = tp.gemini_r.clone();
     for i in 1..log_n {
         r_pows[i] = &r_pows[i - 1] * &r_pows[i - 1];
@@ -45,8 +44,8 @@ pub fn verify_shplemini(
     // Max batch size: 3*CONST_PROOF_SIZE_LOG_N + 1 (upper bound when log_n == CONST_PROOF_SIZE_LOG_N)
     const MAX_BATCH: usize = 3 * CONST_PROOF_SIZE_LOG_N + 1;
     let batch_size = 3 + log_n + 2 * (log_n - 1);
-    let mut to_invert = env.zero_array::<MAX_BATCH>();
-    let mut inverted = env.zero_array::<MAX_BATCH>();
+    let mut to_invert = Fr::zero_array::<MAX_BATCH>(env);
+    let mut inverted = Fr::zero_array::<MAX_BATCH>(env);
 
     to_invert[0] = &tp.shplonk_z - &r_pows[0];
     to_invert[1] = &tp.shplonk_z + &r_pows[0];
@@ -55,7 +54,7 @@ pub fn verify_shplemini(
     // fold round denominators: r^j * (1 - u_j) + u_j, for j = log_n down to 1
     for j in (1..=log_n).rev() {
         let u = &tp.sumcheck_u_challenges[j - 1];
-        to_invert[3 + (log_n - j)] = &r_pows[j - 1] * &(env.one() - u) + u;
+        to_invert[3 + (log_n - j)] = &r_pows[j - 1] * &(Fr::one(env) - u) + u;
     }
 
     // further folding denominators: (z - r^j) and (z + r^j) for j = 1..log_n
@@ -84,7 +83,7 @@ pub fn verify_shplemini(
     //   [69]                = kzg_quotient with scalar z
     const TOTAL: usize = 1 + NUMBER_OF_ENTITIES + CONST_PROOF_SIZE_LOG_N + 1;
     trace!("total = {}", TOTAL);
-    let mut scalars = env.zero_array::<TOTAL>();
+    let mut scalars = Fr::zero_array::<TOTAL>(env);
     let mut coms = repeat::<G1Point, TOTAL>(G1Point::infinity(env));
 
     // 3) compute shplonk weights
@@ -93,12 +92,12 @@ pub fn verify_shplemini(
     let neg_unshifted = -&unshifted;
     let neg_shifted = -&shifted;
     // 4) shplonk_Q
-    scalars[0] = env.one();
+    scalars[0] = Fr::one(env);
     coms[0] = proof.shplonk_q.clone();
 
     // 5) weight sumcheck evals
-    let mut rho_pow = env.one();
-    let mut eval_acc = env.zero();
+    let mut rho_pow = Fr::one(env);
+    let mut eval_acc = Fr::zero(env);
     let shifted_end = NUMBER_UNSHIFTED + NUMBER_TO_BE_SHIFTED;
     debug_assert_eq!(NUMBER_OF_ENTITIES, shifted_end);
     for (idx, eval) in proof
@@ -178,14 +177,14 @@ pub fn verify_shplemini(
     }
 
     // 7) folding rounds — use batch-inverted denominators
-    let mut fold_pos = env.zero_array::<CONST_PROOF_SIZE_LOG_N>();
+    let mut fold_pos = Fr::zero_array::<CONST_PROOF_SIZE_LOG_N>(env);
     let mut cur = eval_acc;
     for j in (1..=log_n).rev() {
         let r2 = &r_pows[j - 1];
         let u = &tp.sumcheck_u_challenges[j - 1];
-        let fold_lin = r2 * &(env.one() - u) - u;
+        let fold_lin = r2 * &(Fr::one(env) - u) - u;
         let num =
-            r2 * &cur * env.fr_from_u64(2) - &(&proof.gemini_a_evaluations[j - 1] * &fold_lin);
+            r2 * &cur * Fr::from_u64(env, 2) - &(&proof.gemini_a_evaluations[j - 1] * &fold_lin);
         let den_inv = inverted[3 + (log_n - j)].clone();
         cur = num * &den_inv;
         fold_pos[j - 1] = cur.clone();

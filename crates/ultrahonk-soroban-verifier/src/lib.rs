@@ -5,7 +5,6 @@ extern crate alloc;
 
 pub mod debug;
 pub mod ec;
-pub mod env;
 pub mod field;
 pub mod hash;
 pub mod relations;

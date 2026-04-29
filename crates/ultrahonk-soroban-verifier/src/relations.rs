@@ -3,7 +3,6 @@
 //! lookup, range, elliptic, auxiliary, Poseidon external/internal) into a single
 //! scalar which is then batched with the alpha challenges.
 
-use crate::env::Bn254FrGenerator;
 use crate::field::Fr;
 use crate::types::{RelationParameters, Wire, NUMBER_OF_SUBRELATIONS};
 use soroban_sdk::Env;
@@ -31,18 +30,18 @@ fn accumulate_arithmetic_relation(env: &Env, p: &[Fr], evals: &mut [Fr], domain_
     let wo = wire(p, Wire::Wo);
     // Relation 0
     {
-        let neg_half = env.neg_half();
-        let mut accum = (&q_arith - &env.fr_from_u64(3)) * &qm * &wr * &wl * neg_half;
+        let neg_half = Fr::neg_half(env);
+        let mut accum = (&q_arith - &Fr::from_u64(env, 3)) * &qm * &wr * &wl * neg_half;
         accum = accum + &ql * &wl + &qr * &wr + &qo * &wo + &q4 * &w4 + &qc;
-        accum = (accum + (&q_arith - &env.one()) * &w4_shift) * &q_arith * domain_sep;
+        accum = (accum + (&q_arith - &Fr::one(env)) * &w4_shift) * &q_arith * domain_sep;
         evals[0] = accum;
     }
     // Relation 1
     {
         let mut accum = &wl + &w4 - &wl_shift + &qm;
         accum = accum
-            * (&q_arith - &env.fr_from_u64(2))
-            * (&q_arith - &env.fr_from_u64(1))
+            * (&q_arith - &Fr::from_u64(env, 2))
+            * (&q_arith - &Fr::from_u64(env, 1))
             * q_arith
             * domain_sep;
         evals[1] = accum;
@@ -132,9 +131,9 @@ fn accumulate_log_derivative_lookup_relation(
 
 /// Accumulate the four range-check subrelations (indices 6..9).
 fn accumulate_delta_range_relation(env: &Env, p: &[Fr], evals: &mut [Fr], domain_sep: &Fr) {
-    let minus_one = env.zero() - env.fr_from_u64(1);
-    let minus_two = env.zero() - env.fr_from_u64(2);
-    let minus_three = env.zero() - env.fr_from_u64(3);
+    let minus_one = Fr::zero(env) - Fr::from_u64(env, 1);
+    let minus_two = Fr::zero(env) - Fr::from_u64(env, 2);
+    let minus_three = Fr::zero(env) - Fr::from_u64(env, 3);
 
     let wr = wire(p, Wire::Wr);
     let wl = wire(p, Wire::Wl);
@@ -186,12 +185,12 @@ fn accumulate_elliptic_relation(env: &Env, p: &[Fr], evals: &mut [Fr], domain_se
     };
 
     const B_NEG: u64 = 17;
-    let b_neg = env.fr_from_u64(B_NEG);
+    let b_neg = Fr::from_u64(env, B_NEG);
 
     let x_double_id = {
         let x_pow_4 = (&y1_sq + &b_neg) * &x1;
         let y1_sqr_mul_4 = &y1_sq + &y1_sq + &y1_sq + &y1_sq;
-        let x_pow_4_mul_9 = x_pow_4 * env.fr_from_u64(9);
+        let x_pow_4_mul_9 = x_pow_4 * Fr::from_u64(env, 9);
         (&x3 + &x1 + &x1) * y1_sqr_mul_4 - x_pow_4_mul_9
     };
     let y_double_id = {
@@ -200,7 +199,7 @@ fn accumulate_elliptic_relation(env: &Env, p: &[Fr], evals: &mut [Fr], domain_se
     };
 
     let q_gate_dom = &q_gate * domain_sep;
-    let add_factor = (env.one() - &q_double) * &q_gate_dom;
+    let add_factor = (Fr::one(env) - &q_double) * &q_gate_dom;
     let double_factor = q_double * q_gate_dom;
 
     // Contribution 10: elliptic x
@@ -217,8 +216,8 @@ fn accumulate_auxillary_relation(
     evals: &mut [Fr],
     domain_sep: &Fr,
 ) {
-    let limb_size = env.fr_from_parts(0, 0, 0x10, 0);
-    let sublimb_shift = env.fr_from_u64(1 << 14);
+    let limb_size = Fr::from_parts(env, 0, 0, 0x10, 0);
+    let sublimb_shift = Fr::from_u64(env, 1 << 14);
 
     let wl = wire(p, Wire::Wl);
     let wr = wire(p, Wire::Wr);
@@ -273,7 +272,8 @@ fn accumulate_auxillary_relation(
     let record_delta = &w4_shift - &w4;
 
     let index_is_monotonically_increasing = &index_delta * &index_delta - &index_delta;
-    let adjacent_values_match_if_adjacent_indices_match = (env.one() - &index_delta) * record_delta;
+    let adjacent_values_match_if_adjacent_indices_match =
+        (Fr::one(env) - &index_delta) * record_delta;
 
     let rom_gate_common = &ql * &qr * &q_aux * domain_sep;
 
@@ -290,7 +290,7 @@ fn accumulate_auxillary_relation(
 
     let value_delta = &wo_shift - &wo;
     let adjacent_values_match_if_adjacent_indices_match_and_next_access_is_a_read_operation =
-        (env.one() - &index_delta) * value_delta * (env.one() - &next_gate_access_type);
+        (Fr::one(env) - &index_delta) * value_delta * (Fr::one(env) - &next_gate_access_type);
 
     let ram_gate_common = &q_arith * &q_aux * domain_sep;
 
@@ -302,7 +302,7 @@ fn accumulate_auxillary_relation(
         (&next_gate_access_type * &next_gate_access_type - next_gate_access_type) * ram_gate_common;
 
     let rom_consistency_check_identity = &memory_record_check * &ql * &qr;
-    let ram_timestamp_check_identity = (env.one() - index_delta) * (&wr_shift - &wr) - &wo;
+    let ram_timestamp_check_identity = (Fr::one(env) - index_delta) * (&wr_shift - &wr) - &wo;
     let ram_consistency_check_identity = access_check * &q_arith;
 
     let memory_identity = rom_consistency_check_identity
@@ -374,7 +374,7 @@ fn accumulate_poseidon_internal_relation(env: &Env, p: &[Fr], evals: &mut [Fr], 
     let q_poseidon = wire(p, Wire::QPoseidon2Internal);
     let q_poseidon_dom = q_poseidon * domain_sep;
     let u_sum = &u1_int + &u2_int + &u3_int + &u4_int;
-    let diag = env.internal_matrix_diagonal();
+    let diag = Fr::internal_matrix_diagonal(env);
 
     let w1 = &u1_int * &diag[0] + &u_sum;
     let w2 = &u2_int * &diag[1] + &u_sum;
@@ -404,7 +404,7 @@ pub fn accumulate_relation_evaluations(
     alphas: &[Fr],
     pow_partial_eval: Fr,
 ) -> Fr {
-    let mut evaluations = env.zero_array::<NUMBER_OF_SUBRELATIONS>();
+    let mut evaluations = Fr::zero_array::<NUMBER_OF_SUBRELATIONS>(env);
     let domain_sep = &pow_partial_eval;
 
     accumulate_arithmetic_relation(env, purported_evaluations, &mut evaluations, domain_sep);
@@ -431,26 +431,27 @@ mod tests {
     #[test]
     fn test_relations_determinism() {
         let env = Env::default();
-        let mut purported_evaluations = env.zero_array::<{ crate::types::NUMBER_OF_ENTITIES }>();
+        let mut purported_evaluations =
+            Fr::zero_array::<{ crate::types::NUMBER_OF_ENTITIES }>(&env);
         for (i, eval) in purported_evaluations.iter_mut().enumerate() {
-            *eval = env.fr_from_u64(i as u64);
+            *eval = Fr::from_u64(&env, i as u64);
         }
 
         let rp = RelationParameters {
-            eta: env.fr_from_u64(100),
-            eta_two: env.fr_from_u64(101),
-            eta_three: env.fr_from_u64(102),
-            beta: env.fr_from_u64(103),
-            gamma: env.fr_from_u64(104),
-            public_inputs_delta: env.fr_from_u64(105),
+            eta: Fr::from_u64(&env, 100),
+            eta_two: Fr::from_u64(&env, 101),
+            eta_three: Fr::from_u64(&env, 102),
+            beta: Fr::from_u64(&env, 103),
+            gamma: Fr::from_u64(&env, 104),
+            public_inputs_delta: Fr::from_u64(&env, 105),
         };
 
-        let mut alphas = env.zero_array::<{ crate::types::NUMBER_OF_ALPHAS }>();
+        let mut alphas = Fr::zero_array::<{ crate::types::NUMBER_OF_ALPHAS }>(&env);
         for (i, alpha) in alphas.iter_mut().enumerate() {
-            *alpha = env.fr_from_u64((200 + i) as u64);
+            *alpha = Fr::from_u64(&env, (200 + i) as u64);
         }
 
-        let pow_partial_eval = env.fr_from_u64(300);
+        let pow_partial_eval = Fr::from_u64(&env, 300);
 
         let result = accumulate_relation_evaluations(
             &env,

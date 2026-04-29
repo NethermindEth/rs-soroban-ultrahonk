@@ -1,6 +1,5 @@
 //! Utilities for loading Proof and VerificationKey, plus byte↔field/point conversion.
 
-use crate::env::Bn254FrGenerator;
 use crate::field::Fr;
 use crate::types::{
     G1Point, Proof, VerificationKey, BATCHED_RELATION_PARTIAL_LENGTH, CONST_PROOF_SIZE_LOG_N,
@@ -61,7 +60,7 @@ fn combine_limbs(lo: &[u8; 32], hi: &[u8; 32]) -> [u8; 32] {
 #[inline]
 fn fr_word32(env: &Env, blob: &[u8], word_idx: usize) -> Fr {
     let o = word_idx * 32;
-    env.fr_from_array(blob[o..o + 32].try_into().expect("fr32"))
+    Fr::from_array(env, blob[o..o + 32].try_into().expect("fr32"))
 }
 
 #[inline]
@@ -242,7 +241,7 @@ mod tests {
 
         // Too short
         let bytes_short = Bytes::from_slice(&env, &[0u8; 10]);
-        assert!(load_vk_from_bytes(&bytes_short).is_none());
+        assert!(load_vk_from_bytes(&env, &bytes_short).is_none());
 
         // Too long
         const HEADER_WORDS: usize = 4;
@@ -251,6 +250,6 @@ mod tests {
 
         let long_bytes = [0u8; EXPECTED_LEN + 1];
         let bytes_long = Bytes::from_slice(&env, &long_bytes);
-        assert!(load_vk_from_bytes(&bytes_long).is_none());
+        assert!(load_vk_from_bytes(&env, &bytes_long).is_none());
     }
 }

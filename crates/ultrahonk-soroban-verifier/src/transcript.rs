@@ -1,6 +1,5 @@
 //! Fiat–Shamir transcript for UltraHonk
 
-use crate::env::Bn254FrGenerator;
 use crate::field::ArkFr;
 use crate::trace;
 use crate::{
@@ -32,8 +31,8 @@ fn split_challenge_from_be32(env: &Env, challenge_bytes: &[u8; 32]) -> (Fr, Fr) 
     let mut high_bytes = [0u8; 32];
     high_bytes[16..].copy_from_slice(&challenge_bytes[..16]);
     (
-        env.fr_from_array(&low_bytes),
-        env.fr_from_array(&high_bytes),
+        Fr::from_array(env, &low_bytes),
+        Fr::from_array(env, &high_bytes),
     )
 }
 
@@ -113,7 +112,7 @@ fn generate_alpha_challenges(
     }
     let mut next_previous_challenge = hash_to_fr(&data);
 
-    let mut alphas = env.zero_array::<NUMBER_OF_ALPHAS>();
+    let mut alphas = Fr::zero_array::<NUMBER_OF_ALPHAS>(env);
     let (a0, a1) = split_challenge(env, &next_previous_challenge);
     alphas[0] = a0;
     alphas[1] = a1;
@@ -160,7 +159,7 @@ fn generate_relation_parameters_challenges(
         eta_three,
         beta,
         gamma,
-        public_inputs_delta: env.zero(),
+        public_inputs_delta: Fr::zero(env),
     };
     (rp, next_previous_challenge)
 }
@@ -170,7 +169,7 @@ fn generate_gate_challenges(
     previous_challenge: Fr,
 ) -> ([Fr; CONST_PROOF_SIZE_LOG_N], Fr) {
     let mut next_previous_challenge = previous_challenge;
-    let mut gate_challenges = env.zero_array::<CONST_PROOF_SIZE_LOG_N>();
+    let mut gate_challenges = Fr::zero_array::<CONST_PROOF_SIZE_LOG_N>(env);
     for challenge in gate_challenges.iter_mut() {
         let next_bytes = Bytes::from_array(env, &next_previous_challenge.to_bytes());
         next_previous_challenge = hash_to_fr(&next_bytes);
@@ -185,7 +184,7 @@ fn generate_sumcheck_challenges(
     previous_challenge: Fr,
 ) -> ([Fr; CONST_PROOF_SIZE_LOG_N], Fr) {
     let mut next_previous_challenge = previous_challenge;
-    let mut sumcheck_challenges = env.zero_array::<CONST_PROOF_SIZE_LOG_N>();
+    let mut sumcheck_challenges = Fr::zero_array::<CONST_PROOF_SIZE_LOG_N>(env);
     for (r, challenge) in sumcheck_challenges.iter_mut().enumerate() {
         let mut data = Bytes::new(env);
         data.extend_from_slice(&next_previous_challenge.to_bytes());
@@ -326,7 +325,7 @@ mod tests {
         let pi_bytes = Bytes::from_slice(&env, &f.public_inputs);
 
         let proof = load_proof(&env, &proof_bytes);
-        let vk = load_vk_from_bytes(&vk_bytes).unwrap();
+        let vk = load_vk_from_bytes(&env, &vk_bytes).unwrap();
 
         let t = generate_transcript(
             &env,
