@@ -142,89 +142,45 @@ pub fn batch_inverse(vals: &[Fr], out: &mut [Fr]) -> Result<(), &'static str> {
     Ok(())
 }
 
-impl Add for Fr {
-    type Output = Fr;
-    fn add(self, rhs: Fr) -> Fr {
-        Fr(self.0 + rhs.0)
-    }
+macro_rules! binop_fr {
+    ($trait:ident, $method:ident, $host_fn:ident, $op:tt) => {
+        impl $trait for Fr {
+            type Output = Fr;
+
+            fn $method(self, rhs: Fr) -> Fr {
+                Fr(self.0 $op rhs.0)
+            }
+        }
+
+        impl $trait<&Fr> for Fr {
+            type Output = Fr;
+
+            fn $method(self, rhs: &Fr) -> Fr {
+                Fr(self.0.env().crypto().bn254().$host_fn(&self.0, &rhs.0))
+            }
+        }
+
+        impl $trait<Fr> for &Fr {
+            type Output = Fr;
+
+            fn $method(self, rhs: Fr) -> Fr {
+                Fr(self.0.env().crypto().bn254().$host_fn(&self.0, &rhs.0))
+            }
+        }
+
+        impl $trait for &Fr {
+            type Output = Fr;
+
+            fn $method(self, rhs: &Fr) -> Fr {
+                Fr(self.0.env().crypto().bn254().$host_fn(&self.0, &rhs.0))
+            }
+        }
+    };
 }
 
-impl Add<&Fr> for Fr {
-    type Output = Fr;
-    fn add(self, rhs: &Fr) -> Fr {
-        Fr(self.0.env().crypto().bn254().fr_add(&self.0, &rhs.0))
-    }
-}
-
-impl Add<Fr> for &Fr {
-    type Output = Fr;
-    fn add(self, rhs: Fr) -> Fr {
-        Fr(self.0.env().crypto().bn254().fr_add(&self.0, &rhs.0))
-    }
-}
-
-impl Add for &Fr {
-    type Output = Fr;
-    fn add(self, rhs: &Fr) -> Fr {
-        Fr(self.0.env().crypto().bn254().fr_add(&self.0, &rhs.0))
-    }
-}
-
-impl Sub for Fr {
-    type Output = Fr;
-    fn sub(self, rhs: Fr) -> Fr {
-        Fr(self.0 - rhs.0)
-    }
-}
-
-impl Sub<&Fr> for Fr {
-    type Output = Fr;
-    fn sub(self, rhs: &Fr) -> Fr {
-        Fr(self.0.env().crypto().bn254().fr_sub(&self.0, &rhs.0))
-    }
-}
-
-impl Sub<Fr> for &Fr {
-    type Output = Fr;
-    fn sub(self, rhs: Fr) -> Fr {
-        Fr(self.0.env().crypto().bn254().fr_sub(&self.0, &rhs.0))
-    }
-}
-
-impl Sub for &Fr {
-    type Output = Fr;
-    fn sub(self, rhs: &Fr) -> Fr {
-        Fr(self.0.env().crypto().bn254().fr_sub(&self.0, &rhs.0))
-    }
-}
-
-impl Mul for Fr {
-    type Output = Fr;
-    fn mul(self, rhs: Fr) -> Fr {
-        Fr(self.0 * rhs.0)
-    }
-}
-
-impl Mul<&Fr> for Fr {
-    type Output = Fr;
-    fn mul(self, rhs: &Fr) -> Fr {
-        Fr(self.0.env().crypto().bn254().fr_mul(&self.0, &rhs.0))
-    }
-}
-
-impl Mul<Fr> for &Fr {
-    type Output = Fr;
-    fn mul(self, rhs: Fr) -> Fr {
-        Fr(self.0.env().crypto().bn254().fr_mul(&self.0, &rhs.0))
-    }
-}
-
-impl Mul for &Fr {
-    type Output = Fr;
-    fn mul(self, rhs: &Fr) -> Fr {
-        Fr(self.0.env().crypto().bn254().fr_mul(&self.0, &rhs.0))
-    }
-}
+binop_fr!(Add, add, fr_add, +);
+binop_fr!(Sub, sub, fr_sub, -);
+binop_fr!(Mul, mul, fr_mul, *);
 
 impl Neg for Fr {
     type Output = Fr;
