@@ -96,12 +96,23 @@ fn compute_root(env: &Env, leaf: &BigUint, siblings: &[BigUint], bits: &[u8]) ->
     cur
 }
 
+fn zero_at(env: &Env, level: u32) -> BigUint {
+    let mut z = BigUint::from(0u32);
+    for _ in 0..level {
+        let zz = z.clone();
+        z = field_hash2(env, &zz, &zz);
+    }
+    z
+}
+
 fn main() {
     let env = Env::default();
+    env.cost_estimate().budget().reset_unlimited();
     let prover_path =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../circuits/tornado/Prover.toml");
     let content = fs::read_to_string(&prover_path).unwrap_or_default();
     let generate = env_flag("TORNADO_GENERATE");
+    let empty_tree = env_flag("TORNADO_EMPTY_TREE");
     let seed = env::var("TORNADO_SEED")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
@@ -113,16 +124,22 @@ fn main() {
     let mut bits: Vec<u8> = Vec::new();
     let base_content: String;
 
-    if generate {
+    if generate || empty_tree {
         let mut rng = Lcg::new(seed);
         nullifier = BigUint::from(rng.next_u64());
         secret = BigUint::from(rng.next_u64());
-        siblings = (0..TREE_DEPTH)
-            .map(|_| BigUint::from(rng.next_u64()))
-            .collect();
-        bits = (0..TREE_DEPTH)
-            .map(|_| (rng.next_u64() & 1) as u8)
-            .collect();
+
+        if empty_tree {
+            siblings = (0..TREE_DEPTH).map(|i| zero_at(&env, i as u32)).collect();
+            bits = vec![0; TREE_DEPTH];
+        } else {
+            siblings = (0..TREE_DEPTH)
+                .map(|_| BigUint::from(rng.next_u64()))
+                .collect();
+            bits = (0..TREE_DEPTH)
+                .map(|_| (rng.next_u64() & 1) as u8)
+                .collect();
+        }
 
         let sibling_strings: Vec<String> = siblings.iter().map(|v| v.to_string()).collect();
         let bit_strings: Vec<String> = bits.iter().map(|v| v.to_string()).collect();
@@ -204,10 +221,19 @@ fn main() {
     }
 
     assert_eq!(siblings.len(), bits.len(), "siblings/bits length mismatch");
-    if generate {
+    if generate || empty_tree {
         assert_eq!(siblings.len(), TREE_DEPTH, "path_siblings depth mismatch");
     }
     let leaf = field_hash2(&env, &nullifier, &secret);
+
+    if empty_tree {
+        let target_dir =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../circuits/tornado/target/e2e");
+        fs::create_dir_all(&target_dir).expect("create target/e2e");
+        fs::write(target_dir.join("commitment"), be32_from_biguint(&leaf))
+            .expect("write commitment");
+    }
+
     let nf = field_hash2(&env, &nullifier, &BigUint::from(0u32));
     let root = compute_root(&env, &leaf, &siblings, &bits);
 
