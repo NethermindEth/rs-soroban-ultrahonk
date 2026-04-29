@@ -47,9 +47,10 @@ pub fn g1_msm(env: &Env, coms: &[G1Point], scalars: &[Fr]) -> Result<Bn254G1Affi
         return Err("msm len mismatch");
     }
     let bn = env.crypto().bn254();
+    let zero = Fr::zero(env);
     let mut acc = Bn254G1Affine::from_array(env, &G1_INFINITY_AFFINE_BYTES);
     for (c, s) in coms.iter().zip(scalars.iter()) {
-        if s.is_zero() {
+        if *s == zero {
             continue;
         }
         let term = bn.g1_mul(c.as_bn254(), &s.0);
