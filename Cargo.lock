@@ -1949,6 +1949,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40ce102ab67701b8526c123c1bab5cbe42d7040ccfd0f64af1a385808d2f43de"
 
 [[package]]
+name = "ultrahonk-test-utils"
+version = "0.0.0"
+dependencies = [
+ "soroban-sdk",
+ "ultrahonk_soroban_verifier",
+]
+
+[[package]]
 name = "ultrahonk_soroban_verifier"
 version = "0.1.0"
 dependencies = [

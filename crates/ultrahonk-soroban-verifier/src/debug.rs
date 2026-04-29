@@ -35,6 +35,7 @@ pub fn g1_to_hex(pt: &G1Point) -> (String, String) {
 }
 
 /// Outputs commitment/scalar pairs
+#[allow(unused_variables)]
 pub fn dump_pairs(coms: &[G1Point], scalars: &[Fr], head_tail: usize) {
     #[cfg(feature = "trace")]
     {
@@ -74,6 +75,7 @@ pub fn dump_pairs(coms: &[G1Point], scalars: &[Fr], head_tail: usize) {
 /// Outputs a specific slice of commitment/scalar pairs, useful for
 /// cross-checking against Solidity's first 40 entities (1..=40).
 #[allow(dead_code)]
+#[allow(unused_variables)]
 pub fn dump_pairs_range(coms: &[G1Point], scalars: &[Fr], start: usize, end_inclusive: usize) {
     #[cfg(feature = "trace")]
     {
@@ -106,6 +108,7 @@ pub fn dump_pairs_range(coms: &[G1Point], scalars: &[Fr], start: usize, end_incl
 
 /// Debug Fr vector with hex output
 #[inline(always)]
+#[allow(unused_variables)]
 pub fn dbg_vec(tag: &str, xs: &[Fr]) {
     #[cfg(feature = "trace")]
     {
@@ -126,6 +129,7 @@ pub fn dbg_vec(tag: &str, xs: &[Fr]) {
 
 /// Debug Fr with hex output
 #[inline(always)]
+#[allow(unused_variables)]
 pub fn dbg_fr(tag: &str, x: &Fr) {
     #[cfg(feature = "trace")]
     {
