@@ -4,7 +4,8 @@ members = [
     "crates/ultrahonk-soroban-verifier",
     "crates/test-utils",
     "contracts/rs-soroban-ultrahonk",
-    "contracts/tornado_classic/contracts"
+    "contracts/tornado_classic/contracts",
+    "contracts/identity"
 ]
 
 [patch.crates-io]
