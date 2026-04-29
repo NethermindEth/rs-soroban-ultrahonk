@@ -254,3 +254,131 @@ fn empty_vk_fails() {
         "empty VK must fail to parse"
     );
 }
+
+// =========================================================================
+// 7. Phase 3.1 Fixture circuits
+// =========================================================================
+
+#[test]
+fn happy_path_small_circuit() {
+    let env = test_env();
+    let f = Fixture::load("small_circuit");
+    let proof = Bytes::from_slice(&env, &f.proof);
+    let vk = Bytes::from_slice(&env, &f.vk);
+    let pi = Bytes::from_slice(&env, &f.public_inputs);
+
+    let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
+    assert!(
+        v.verify(&proof, &pi).is_ok(),
+        "happy path must verify (small_circuit)"
+    );
+}
+
+#[test]
+fn mutated_proof_small_circuit_fails() {
+    let env = test_env();
+    let f = Fixture::load("small_circuit");
+    let bad_proof = mutate_byte(&f.proof, 100, 0x01);
+    let proof = Bytes::from_slice(&env, &bad_proof);
+    let vk = Bytes::from_slice(&env, &f.vk);
+    let pi = Bytes::from_slice(&env, &f.public_inputs);
+
+    let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
+    assert!(
+        v.verify(&proof, &pi).is_err(),
+        "mutated proof must not verify (small_circuit)"
+    );
+}
+
+#[test]
+fn happy_path_lookup_heavy() {
+    let env = test_env();
+    let f = Fixture::load("lookup_heavy");
+    let proof = Bytes::from_slice(&env, &f.proof);
+    let vk = Bytes::from_slice(&env, &f.vk);
+    let pi = Bytes::from_slice(&env, &f.public_inputs);
+
+    let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
+    assert!(
+        v.verify(&proof, &pi).is_ok(),
+        "happy path must verify (lookup_heavy)"
+    );
+}
+
+#[test]
+fn mutated_proof_lookup_heavy_fails() {
+    let env = test_env();
+    let f = Fixture::load("lookup_heavy");
+    let bad_proof = mutate_byte(&f.proof, 100, 0x01);
+    let proof = Bytes::from_slice(&env, &bad_proof);
+    let vk = Bytes::from_slice(&env, &f.vk);
+    let pi = Bytes::from_slice(&env, &f.public_inputs);
+
+    let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
+    assert!(
+        v.verify(&proof, &pi).is_err(),
+        "mutated proof must not verify (lookup_heavy)"
+    );
+}
+
+#[test]
+fn happy_path_range_heavy() {
+    let env = test_env();
+    let f = Fixture::load("range_heavy");
+    let proof = Bytes::from_slice(&env, &f.proof);
+    let vk = Bytes::from_slice(&env, &f.vk);
+    let pi = Bytes::from_slice(&env, &f.public_inputs);
+
+    let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
+    assert!(
+        v.verify(&proof, &pi).is_ok(),
+        "happy path must verify (range_heavy)"
+    );
+}
+
+#[test]
+fn mutated_proof_range_heavy_fails() {
+    let env = test_env();
+    let f = Fixture::load("range_heavy");
+    let bad_proof = mutate_byte(&f.proof, 100, 0x01);
+    let proof = Bytes::from_slice(&env, &bad_proof);
+    let vk = Bytes::from_slice(&env, &f.vk);
+    let pi = Bytes::from_slice(&env, &f.public_inputs);
+
+    let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
+    assert!(
+        v.verify(&proof, &pi).is_err(),
+        "mutated proof must not verify (range_heavy)"
+    );
+}
+
+#[test]
+fn happy_path_many_pubs() {
+    let env = test_env();
+    let f = Fixture::load("many_pubs");
+    let proof = Bytes::from_slice(&env, &f.proof);
+    let vk = Bytes::from_slice(&env, &f.vk);
+    let pi = Bytes::from_slice(&env, &f.public_inputs);
+
+    let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
+    assert!(
+        v.verify(&proof, &pi).is_ok(),
+        "happy path must verify (many_pubs)"
+    );
+}
+
+#[test]
+fn mutated_proof_many_pubs_fails() {
+    let env = test_env();
+    let f = Fixture::load("many_pubs");
+    let bad_proof = mutate_byte(&f.proof, 100, 0x01);
+    let proof = Bytes::from_slice(&env, &bad_proof);
+    let vk = Bytes::from_slice(&env, &f.vk);
+    let pi = Bytes::from_slice(&env, &f.public_inputs);
+
+    let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
+    assert!(
+        v.verify(&proof, &pi).is_err(),
+        "mutated proof must not verify (many_pubs)"
+    );
+}
