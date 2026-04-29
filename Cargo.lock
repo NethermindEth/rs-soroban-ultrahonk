@@ -1966,6 +1966,7 @@ dependencies = [
  "lazy_static",
  "once_cell",
  "soroban-sdk",
+ "ultrahonk-test-utils",
 ]
 
 [[package]]
