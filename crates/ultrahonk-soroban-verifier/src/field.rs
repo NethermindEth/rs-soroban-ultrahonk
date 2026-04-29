@@ -2,7 +2,7 @@ pub use soroban_sdk::crypto::bn254::Bn254Fr as ArkFr;
 
 use core::array::repeat;
 use core::ops::{Add, Mul, Neg, Sub};
-use soroban_sdk::{Bytes, Env, U256};
+use soroban_sdk::{BytesN, Env, U256};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Fr(pub ArkFr);
@@ -30,10 +30,7 @@ impl Fr {
 
     #[inline(always)]
     pub fn from_array(env: &Env, value: &[u8; 32]) -> Self {
-        Self(ArkFr::from_u256(U256::from_be_bytes(
-            env,
-            &Bytes::from_array(env, value),
-        )))
+        Self(ArkFr::from_bytes(BytesN::from_array(env, value)))
     }
 
     #[inline(always)]
