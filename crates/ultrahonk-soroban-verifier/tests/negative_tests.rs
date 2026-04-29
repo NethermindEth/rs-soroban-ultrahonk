@@ -71,7 +71,7 @@ fn mutated_vk_simple_circuit_fails() {
         let pi = Bytes::from_slice(&env, &f.public_inputs);
 
         match UltraHonkVerifier::new(&env, &vk) {
-            Err(_) => return,  // VK parse rejected — good
+            Err(_) => return, // VK parse rejected — good
             Ok(v) => {
                 assert!(
                     v.verify(&proof, &pi).is_err(),
@@ -87,7 +87,9 @@ fn mutated_vk_simple_circuit_fails() {
             .map(|s| s.as_str())
             .unwrap_or("");
         assert!(
-            msg.contains("not on curve") || msg.contains("InvalidInput") || msg.contains("HostError"),
+            msg.contains("not on curve")
+                || msg.contains("InvalidInput")
+                || msg.contains("HostError"),
             "unexpected panic: {msg}"
         );
     }
@@ -119,7 +121,9 @@ fn mutated_vk_fib_chain_fails() {
             .map(|s| s.as_str())
             .unwrap_or("");
         assert!(
-            msg.contains("not on curve") || msg.contains("InvalidInput") || msg.contains("HostError"),
+            msg.contains("not on curve")
+                || msg.contains("InvalidInput")
+                || msg.contains("HostError"),
             "unexpected panic: {msg}"
         );
     }

@@ -141,3 +141,65 @@ impl Neg for Fr {
         Fr(-self.0)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn batch_inverse_round_trip() {
+        let inputs = [Fr::from_u64(2), Fr::from_u64(3), Fr::from_u64(5)];
+        let mut inverses = [Fr::zero(); 3];
+        batch_inverse(&inputs, &mut inverses).unwrap();
+
+        for i in 0..3 {
+            assert_eq!(inputs[i] * inverses[i], Fr::one());
+        }
+    }
+
+    #[test]
+    fn batch_inverse_empty() {
+        let inputs: [Fr; 0] = [];
+        let mut inverses: [Fr; 0] = [];
+        assert_eq!(batch_inverse(&inputs, &mut inverses), Ok(()));
+    }
+
+    #[test]
+    fn batch_inverse_single() {
+        let inputs = [Fr::from_u64(42)];
+        let mut inverses = [Fr::zero(); 1];
+        batch_inverse(&inputs, &mut inverses).unwrap();
+        assert_eq!(inputs[0] * inverses[0], Fr::one());
+    }
+
+    #[test]
+    fn batch_inverse_all_equal() {
+        let inputs = [Fr::from_u64(7), Fr::from_u64(7), Fr::from_u64(7)];
+        let mut inverses = [Fr::zero(); 3];
+        batch_inverse(&inputs, &mut inverses).unwrap();
+
+        let expected_inv = Fr::from_u64(7).inverse().unwrap();
+        for i in 0..3 {
+            assert_eq!(inverses[i], expected_inv);
+        }
+    }
+
+    #[test]
+    fn hex_round_trip() {
+        let hex_str = "0x1234567890abcdef";
+        let fr = Fr::from_str(hex_str);
+        let bytes = fr.to_bytes();
+
+        #[cfg(not(feature = "std"))]
+        use alloc::{format, string::String};
+        #[cfg(feature = "std")]
+        use std::{format, string::String};
+
+        // Convert the last 8 bytes back to hex and compare
+        let mut out_hex = String::from("0x");
+        for b in &bytes[24..32] {
+            out_hex.push_str(&format!("{:02x}", b));
+        }
+        assert_eq!(out_hex, hex_str);
+    }
+}

@@ -297,3 +297,53 @@ pub fn generate_transcript(
         shplonk_z,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::utils::{load_proof, load_vk_from_bytes};
+    use soroban_sdk::{Bytes, Env};
+    use ultrahonk_test_utils::Fixture;
+
+    #[test]
+    fn test_transcript_determinism() {
+        let env = Env::default();
+        let f = Fixture::load("simple_circuit");
+        let proof_bytes = Bytes::from_slice(&env, &f.proof);
+        let vk_bytes = Bytes::from_slice(&env, &f.vk);
+        let pi_bytes = Bytes::from_slice(&env, &f.public_inputs);
+
+        let proof = load_proof(&proof_bytes);
+        let vk = load_vk_from_bytes(&vk_bytes).unwrap();
+
+        let t = generate_transcript(
+            &env,
+            &proof,
+            &pi_bytes,
+            vk.circuit_size,
+            vk.public_inputs_size,
+            1, // pub_inputs_offset
+        );
+
+        assert_eq!(
+            hex::encode(t.rel_params.eta.to_bytes()),
+            "0000000000000000000000000000000085cff885ac2961fd2caf69da4ab04a55"
+        );
+        assert_eq!(
+            hex::encode(t.rel_params.beta.to_bytes()),
+            "00000000000000000000000000000000cf2d1a0f78861f5dfc916c1550073a26"
+        );
+        assert_eq!(
+            hex::encode(t.rel_params.gamma.to_bytes()),
+            "000000000000000000000000000000000b9a9dc0b29d2edaa5de654ffd600900"
+        );
+        assert_eq!(
+            hex::encode(t.rho.to_bytes()),
+            "00000000000000000000000000000000ddc594911e07b3b91b1afc817c04d331"
+        );
+        assert_eq!(
+            hex::encode(t.shplonk_z.to_bytes()),
+            "000000000000000000000000000000001c9e9d4cde5bde269eed51b980ab19fe"
+        );
+    }
+}

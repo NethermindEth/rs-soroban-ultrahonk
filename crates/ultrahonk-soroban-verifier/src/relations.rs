@@ -427,3 +427,40 @@ pub fn accumulate_relation_evaluations(
 
     scale_and_batch_subrelations(&evaluations, alphas)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_relations_determinism() {
+        let mut purported_evaluations = [Fr::zero(); crate::types::NUMBER_OF_ENTITIES];
+        for (i, eval) in purported_evaluations.iter_mut().enumerate() {
+            *eval = Fr::from_u64(i as u64);
+        }
+
+        let rp = RelationParameters {
+            eta: Fr::from_u64(100),
+            eta_two: Fr::from_u64(101),
+            eta_three: Fr::from_u64(102),
+            beta: Fr::from_u64(103),
+            gamma: Fr::from_u64(104),
+            public_inputs_delta: Fr::from_u64(105),
+        };
+
+        let mut alphas = [Fr::zero(); crate::types::NUMBER_OF_ALPHAS];
+        for (i, alpha) in alphas.iter_mut().enumerate() {
+            *alpha = Fr::from_u64((200 + i) as u64);
+        }
+
+        let pow_partial_eval = Fr::from_u64(300);
+
+        let result =
+            accumulate_relation_evaluations(&purported_evaluations, &rp, &alphas, pow_partial_eval);
+
+        assert_eq!(
+            hex::encode(result.to_bytes()),
+            "1ec606befa857100f90267ac1dc687413b93e8586fdbb4682dfda24b864515aa"
+        );
+    }
+}

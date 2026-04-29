@@ -212,3 +212,41 @@ pub fn load_vk_from_bytes(bytes: &Bytes) -> Option<VerificationKey> {
         lagrange_last,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use soroban_sdk::Env;
+
+    #[test]
+    fn test_coord_limbs_round_trip() {
+        // Create a known 32-byte array
+        let mut original = [0u8; 32];
+        for i in 0..32 {
+            original[i] = i as u8;
+        }
+
+        let (lo, hi) = coord_to_halves_be(&original);
+        let recombined = combine_limbs(&lo, &hi);
+
+        assert_eq!(original, recombined);
+    }
+
+    #[test]
+    fn test_load_vk_malformed_input() {
+        let env = Env::default();
+
+        // Too short
+        let bytes_short = Bytes::from_slice(&env, &[0u8; 10]);
+        assert!(load_vk_from_bytes(&bytes_short).is_none());
+
+        // Too long
+        const HEADER_WORDS: usize = 4;
+        const NUM_POINTS: usize = 27;
+        const EXPECTED_LEN: usize = HEADER_WORDS * 8 + NUM_POINTS * 64;
+
+        let long_bytes = [0u8; EXPECTED_LEN + 1];
+        let bytes_long = Bytes::from_slice(&env, &long_bytes);
+        assert!(load_vk_from_bytes(&bytes_long).is_none());
+    }
+}
