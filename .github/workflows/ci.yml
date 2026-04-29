@@ -61,11 +61,8 @@ jobs:
         run: stellar contract build --optimize --features wasm-cost
         working-directory: contracts/tornado_classic/contracts
 
-      - name: Build root circuits
-        run: ./contracts/rs-soroban-ultrahonk/tests/build_circuits.sh
-
-      - name: Build tornado circuits
-        run: ./contracts/tornado_classic/circuit/scripts/gen_artifacts.sh
+      - name: Build all circuits
+        run: ./circuits/scripts/build_all.sh
 
       - name: Run workspace tests
         run: cargo test --workspace --verbose
