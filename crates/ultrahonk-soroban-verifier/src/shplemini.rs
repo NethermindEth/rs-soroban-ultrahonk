@@ -20,6 +20,8 @@ pub fn verify_shplemini(
 ) -> Result<(), &'static str> {
     // 1) r^{2^i}
     let log_n = vk.log_circuit_size as usize;
+    let one = Fr::one(env);
+    let two = Fr::from_u64(env, 2);
     let mut r_pows = Fr::zero_array::<CONST_PROOF_SIZE_LOG_N>(env);
     r_pows[0] = tp.gemini_r.clone();
     for i in 1..log_n {
@@ -54,7 +56,7 @@ pub fn verify_shplemini(
     // fold round denominators: r^j * (1 - u_j) + u_j, for j = log_n down to 1
     for j in (1..=log_n).rev() {
         let u = &tp.sumcheck_u_challenges[j - 1];
-        to_invert[3 + (log_n - j)] = &r_pows[j - 1] * &(Fr::one(env) - u) + u;
+        to_invert[3 + (log_n - j)] = &r_pows[j - 1] * &(&one - u) + u;
     }
 
     // further folding denominators: (z - r^j) and (z + r^j) for j = 1..log_n
@@ -92,11 +94,11 @@ pub fn verify_shplemini(
     let neg_unshifted = -&unshifted;
     let neg_shifted = -&shifted;
     // 4) shplonk_Q
-    scalars[0] = Fr::one(env);
+    scalars[0] = one.clone();
     coms[0] = proof.shplonk_q.clone();
 
     // 5) weight sumcheck evals
-    let mut rho_pow = Fr::one(env);
+    let mut rho_pow = one.clone();
     let mut eval_acc = Fr::zero(env);
     let shifted_end = NUMBER_UNSHIFTED + NUMBER_TO_BE_SHIFTED;
     debug_assert_eq!(NUMBER_OF_ENTITIES, shifted_end);
@@ -182,9 +184,8 @@ pub fn verify_shplemini(
     for j in (1..=log_n).rev() {
         let r2 = &r_pows[j - 1];
         let u = &tp.sumcheck_u_challenges[j - 1];
-        let fold_lin = r2 * &(Fr::one(env) - u) - u;
-        let num =
-            r2 * &cur * Fr::from_u64(env, 2) - &(&proof.gemini_a_evaluations[j - 1] * &fold_lin);
+        let fold_lin = r2 * &(&one - u) - u;
+        let num = r2 * &cur * &two - &(&proof.gemini_a_evaluations[j - 1] * &fold_lin);
         let den_inv = inverted[3 + (log_n - j)].clone();
         cur = num * &den_inv;
         fold_pos[j - 1] = cur.clone();

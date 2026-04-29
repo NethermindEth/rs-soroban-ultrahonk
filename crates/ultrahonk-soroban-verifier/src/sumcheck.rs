@@ -1,5 +1,7 @@
 //! Sum-check verifier
 
+use core::array;
+
 use crate::{
     field::{batch_inverse, Fr},
     relations::accumulate_relation_evaluations,
@@ -62,27 +64,30 @@ fn check_sum(round_univariate: &[Fr], round_target: Fr) -> bool {
 /// to compute all 8 with a single inversion + 21 multiplications.
 #[inline(always)]
 fn compute_next_target_sum(
-    env: &Env,
     round_univariate: &[Fr],
     round_challenge: Fr,
+    barycentric_weights: &[Fr; BATCHED_RELATION_PARTIAL_LENGTH],
+    point_indices: &[Fr; BATCHED_RELATION_PARTIAL_LENGTH],
+    one: &Fr,
+    zero: &Fr,
 ) -> Result<Fr, &'static str> {
     // B(χ) = ∏ (χ - i) for i in 0..8
     // Also collect denominators for batch inversion
-    let mut denoms = Fr::zero_array::<BATCHED_RELATION_PARTIAL_LENGTH>(env);
-    let mut b_poly = Fr::one(env);
+    let mut denoms: [Fr; BATCHED_RELATION_PARTIAL_LENGTH] = array::from_fn(|_| zero.clone());
+    let mut b_poly = one.clone();
     for i in 0..BATCHED_RELATION_PARTIAL_LENGTH {
-        let diff = &round_challenge - &Fr::from_u64(env, i as u64);
+        let diff = &round_challenge - &point_indices[i];
         b_poly = b_poly * &diff;
-        denoms[i] = &Fr::from_array(env, &BARY_BYTES[i]) * &diff;
+        denoms[i] = &barycentric_weights[i] * &diff;
     }
 
     // Batch invert all 8 denominators with a single Fr::inverse()
-    let mut inv_denoms = Fr::zero_array::<BATCHED_RELATION_PARTIAL_LENGTH>(env);
+    let mut inv_denoms: [Fr; BATCHED_RELATION_PARTIAL_LENGTH] = array::from_fn(|_| zero.clone());
     batch_inverse(&denoms, &mut inv_denoms)
         .map_err(|_| "sumcheck: barycentric denominator is zero")?;
 
     // Σ u_i * inv_denom_i
-    let mut acc = Fr::zero(env);
+    let mut acc = zero.clone();
     for i in 0..BATCHED_RELATION_PARTIAL_LENGTH {
         acc = acc + (&round_univariate[i] * &inv_denoms[i]);
     }
@@ -92,12 +97,12 @@ fn compute_next_target_sum(
 
 #[inline(always)]
 fn partially_evaluate_pow(
-    env: &Env,
+    one: &Fr,
     gate_challenge: Fr,
     pow_partial_evaluation: Fr,
     round_challenge: Fr,
 ) -> Fr {
-    pow_partial_evaluation * (Fr::one(env) + round_challenge * (gate_challenge - Fr::one(env)))
+    pow_partial_evaluation * (one + round_challenge * (gate_challenge - one))
 }
 
 pub fn verify_sumcheck(
@@ -107,8 +112,14 @@ pub fn verify_sumcheck(
     vk: &VerificationKey,
 ) -> Result<(), &'static str> {
     let log_n = vk.log_circuit_size as usize;
-    let mut round_target = Fr::zero(env);
-    let mut pow_partial_evaluation = Fr::one(env);
+    let zero = Fr::zero(env);
+    let one = Fr::one(env);
+    let barycentric_weights: [Fr; BATCHED_RELATION_PARTIAL_LENGTH] =
+        array::from_fn(|i| Fr::from_array(env, &BARY_BYTES[i]));
+    let point_indices: [Fr; BATCHED_RELATION_PARTIAL_LENGTH] =
+        array::from_fn(|i| Fr::from_u64(env, i as u64));
+    let mut round_target = zero.clone();
+    let mut pow_partial_evaluation = one.clone();
 
     // 1) Each round sum check and next target/pow calculation
     for round in 0..log_n {
@@ -119,9 +130,16 @@ pub fn verify_sumcheck(
         }
 
         let round_challenge = tp.sumcheck_u_challenges[round].clone();
-        round_target = compute_next_target_sum(env, round_univariate, round_challenge.clone())?;
+        round_target = compute_next_target_sum(
+            round_univariate,
+            round_challenge.clone(),
+            &barycentric_weights,
+            &point_indices,
+            &one,
+            &zero,
+        )?;
         pow_partial_evaluation = partially_evaluate_pow(
-            env,
+            &one,
             tp.gate_challenges[round].clone(),
             pow_partial_evaluation,
             round_challenge,
