@@ -33,7 +33,7 @@ fn verify_lock() -> &'static Mutex<()> {
 }
 
 fn vk_bytes(env: &Env) -> Bytes {
-    Bytes::from_slice(env, include_bytes!("../../circuit/target/vk"))
+    Bytes::from_slice(env, include_bytes!("../../../../circuits/tornado/target/vk"))
 }
 
 fn be32_from_u64(x: u64) -> [u8; 32] {
@@ -225,9 +225,9 @@ fn mixer_withdraw_and_double_spend_rejected() {
     let _ = env.host().set_diagnostic_level(DiagnosticLevel::None);
 
     // Artifacts
-    let vk_bin: &[u8] = include_bytes!("../../circuit/target/vk");
-    let proof_bin: &[u8] = include_bytes!("../../circuit/target/proof");
-    let pub_inputs_bin: &[u8] = include_bytes!("../../circuit/target/public_inputs");
+    let vk_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/vk");
+    let proof_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/proof");
+    let pub_inputs_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/public_inputs");
 
     let vk_bytes: Bytes = Bytes::from_slice(&env, vk_bin);
     // Register contracts
@@ -295,9 +295,9 @@ fn withdraw_rejects_invalid_public_inputs() {
     env.cost_estimate().budget().reset_unlimited();
     let _ = env.host().set_diagnostic_level(DiagnosticLevel::None);
 
-    let vk_bin: &[u8] = include_bytes!("../../circuit/target/vk");
-    let proof_bin: &[u8] = include_bytes!("../../circuit/target/proof");
-    let pub_inputs_bin: &[u8] = include_bytes!("../../circuit/target/public_inputs");
+    let vk_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/vk");
+    let proof_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/proof");
+    let pub_inputs_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/public_inputs");
 
     let vk_bytes: Bytes = Bytes::from_slice(&env, vk_bin);
     let verifier_id: Address = register_verifier(&env, &vk_bytes);
@@ -347,8 +347,8 @@ fn withdraw_rejects_root_mismatch() {
     env.cost_estimate().budget().reset_unlimited();
     let _ = env.host().set_diagnostic_level(DiagnosticLevel::None);
 
-    let proof_bin: &[u8] = include_bytes!("../../circuit/target/proof");
-    let pub_inputs_bin: &[u8] = include_bytes!("../../circuit/target/public_inputs");
+    let proof_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/proof");
+    let pub_inputs_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/public_inputs");
 
     let vk_bytes: Bytes = vk_bytes(&env);
     let verifier_id: Address = register_verifier(&env, &vk_bytes);
@@ -402,8 +402,8 @@ fn print_wasm_budget_for_deposit_and_withdraw() {
     let _ = env.host().set_diagnostic_level(DiagnosticLevel::None);
 
     let vk_bytes: Bytes = vk_bytes(&env);
-    let proof_bin: &[u8] = include_bytes!("../../circuit/target/proof");
-    let pub_inputs_bin: &[u8] = include_bytes!("../../circuit/target/public_inputs");
+    let proof_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/proof");
+    let pub_inputs_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/public_inputs");
 
     let verifier_id: Address = register_wasm_verifier(&env, &vk_bytes);
     let mixer_id: Address = register_wasm_mixer(&env, verifier_id.clone());

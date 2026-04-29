@@ -98,8 +98,9 @@ fn compute_root(env: &Env, leaf: &BigUint, siblings: &[BigUint], bits: &[u8]) ->
 
 fn main() {
     let env = Env::default();
-    let prover_path = Path::new("tornado_classic/circuit/Prover.toml");
-    let content = fs::read_to_string(prover_path).unwrap_or_default();
+    let prover_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../circuits/tornado/Prover.toml");
+    let content = fs::read_to_string(&prover_path).unwrap_or_default();
     let generate = env_flag("TORNADO_GENERATE");
     let seed = env::var("TORNADO_SEED")
         .ok()
