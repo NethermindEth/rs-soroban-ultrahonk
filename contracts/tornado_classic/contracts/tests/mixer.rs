@@ -389,6 +389,7 @@ fn withdraw_rejects_root_mismatch() {
 
 /// Measure deposit/withdraw budget using release WASM contracts.
 #[cfg(feature = "wasm-cost")]
+#[cfg_attr(debug_assertions, ignore = "budget test is release-only")]
 #[allow(clippy::assertions_on_constants)]
 #[test]
 fn print_wasm_budget_for_deposit_and_withdraw() {
