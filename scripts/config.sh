@@ -40,8 +40,8 @@ export STELLAR_CONTAINER_NAME="${STELLAR_CONTAINER_NAME:-stellar-local}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export CONTRACT_WASM="$ROOT_DIR/target/wasm32v1-none/release/rs_soroban_ultrahonk.wasm"
 export CONTRACT_ID_FILE="$ROOT_DIR/.contract_id"
-export DATASET_DIR="$ROOT_DIR/contracts/rs-soroban-ultrahonk/tests/simple_circuit/target"
-export BUILD_CIRCUITS_SCRIPT="$ROOT_DIR/contracts/rs-soroban-ultrahonk/tests/build_circuits.sh"
+export DATASET_DIR="$ROOT_DIR/circuits/simple_circuit/target"
+export BUILD_CIRCUITS_SCRIPT="$ROOT_DIR/circuits/scripts/build_all.sh"
 
 # Colors for output
 export RED='\033[0;31m'

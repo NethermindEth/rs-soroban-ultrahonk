@@ -12,7 +12,7 @@
  *
  * Example (local Quickstart):
  *     npx ts-node invoke_ultrahonk.ts invoke \
- *         --dataset ../../tests/simple_circuit/target \
+ *         --dataset ../../circuits/simple_circuit/target \
  *         --contract-id CCJFN27YH2D5HGI5SOZYNYPJZ6W776QCSJSGVIMUZSCEDR52XXLMRSHG \
  *         --network local --source-account alice --send yes
  */
@@ -27,7 +27,7 @@ import { ArgumentParser } from 'argparse';
 
 const DEFAULT_CONTRACT_ID = 'CD6HGS5V7XJPSPJ5HHPHUZXLYGZAJJC3L6QWR4YZG4NIRO65UYQ6KIYP';
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
-const DEFAULT_DATASET_DIR = path.resolve(REPO_ROOT, 'tests', 'simple_circuit', 'target');
+const DEFAULT_DATASET_DIR = path.resolve(REPO_ROOT, 'circuits', 'simple_circuit', 'target');
 
 // === Data loading / packing ==================================================
 

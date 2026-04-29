@@ -127,10 +127,8 @@ fn wasm_release_path(file_name: &str) -> Option<PathBuf> {
 
 #[cfg(feature = "wasm-cost")]
 fn ensure_release_wasm(file_name: &str, package: &str, extra_args: &[&str]) -> Vec<u8> {
-    if let Some(path) = wasm_release_path(file_name) {
-        return fs::read(&path).expect("reading existing wasm artifact should succeed");
-    }
-
+    // Always rebuild here: the same output path is used for different feature sets,
+    // and the wasm-cost test needs the test-only exports enabled.
     let mut cmd = Command::new("cargo");
     cmd.current_dir(workspace_root());
     cmd.args([
