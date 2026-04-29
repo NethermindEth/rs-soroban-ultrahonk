@@ -1,7 +1,7 @@
 use crate::field::Fr;
 use crate::types::G1Point;
 use soroban_sdk::{
-    crypto::bn254::{Bn254G1Affine, Bn254G2Affine},
+    crypto::bn254::{Bn254Fr, Bn254G1Affine, Bn254G2Affine},
     Env, Vec,
 };
 
@@ -41,22 +41,33 @@ pub fn lhs_g2_affine(env: &Env) -> Bn254G2Affine {
 }
 
 /// Multi-scalar multiplication on G1: ∑ sᵢ·Cᵢ
+///
+/// Thin shim over the host-native `Bn254::g1_msm` which dispatches to a
+/// Pippenger-style multi-scalar multiplication in a single host boundary
+/// crossing. Zero-scalar terms are filtered out before the host call because
+/// the `Bn254G1Msm` budget cost is charged per input term — skipping them
+/// trims both compute and metered budget. Falls back to the point at infinity
+/// for empty input because the host's `bn254_g1_msm` returns `InvalidInput`
+/// on empty vectors.
 #[inline(always)]
 pub fn g1_msm(env: &Env, coms: &[G1Point], scalars: &[Fr]) -> Result<Bn254G1Affine, &'static str> {
     if coms.len() != scalars.len() {
         return Err("msm len mismatch");
     }
-    let bn = env.crypto().bn254();
     let zero = Fr::zero(env);
-    let mut acc = Bn254G1Affine::from_array(env, &G1_INFINITY_AFFINE_BYTES);
+    let mut vp: Vec<Bn254G1Affine> = Vec::new(env);
+    let mut vs: Vec<Bn254Fr> = Vec::new(env);
     for (c, s) in coms.iter().zip(scalars.iter()) {
         if *s == zero {
             continue;
         }
-        let term = bn.g1_mul(c.as_bn254(), &s.0);
-        acc = bn.g1_add(&acc, &term);
+        vp.push_back(c.0.clone());
+        vs.push_back(s.0.clone());
     }
-    Ok(acc)
+    if vp.is_empty() {
+        return Ok(Bn254G1Affine::from_array(env, &G1_INFINITY_AFFINE_BYTES));
+    }
+    Ok(env.crypto().bn254().g1_msm(vp, vs))
 }
 
 /// Pairing product check e(P0, rhs_g2) * e(P1, lhs_g2) == 1
