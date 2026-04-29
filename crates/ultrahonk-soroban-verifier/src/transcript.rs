@@ -8,19 +8,26 @@ use crate::{
     types::{
         G1Point, Proof, RelationParameters, Transcript, CONST_PROOF_SIZE_LOG_N, NUMBER_OF_ALPHAS,
     },
-    utils::coord_to_halves_be,
 };
 use soroban_sdk::{Bytes, Env};
 
+#[inline]
+fn push_coord_halves(buf: &mut Bytes, coord: &[u8]) {
+    // Serialize one affine coordinate as (lo136, hi<=118) limbs.
+    let mut low = [0u8; 32];
+    low[15..].copy_from_slice(&coord[15..]);
+    buf.extend_from_slice(&low);
+
+    let mut high = [0u8; 32];
+    high[17..].copy_from_slice(&coord[..15]);
+    buf.extend_from_slice(&high);
+}
+
 fn push_point(buf: &mut Bytes, pt: &G1Point) {
-    // Serialize a coordinate into two bn254::Fr limbs (lo136, hi<=118)
+    // Serialize affine point coordinates into transcript limb layout.
     let bytes = pt.0.to_array();
-    let (x_lo, x_hi) = coord_to_halves_be(&bytes[..32]);
-    let (y_lo, y_hi) = coord_to_halves_be(&bytes[32..]);
-    buf.extend_from_slice(&x_lo);
-    buf.extend_from_slice(&x_hi);
-    buf.extend_from_slice(&y_lo);
-    buf.extend_from_slice(&y_hi);
+    push_coord_halves(buf, &bytes[..32]);
+    push_coord_halves(buf, &bytes[32..]);
 }
 
 /// Split a 32-byte field element into the two 128-bit transcript “halves” (lo/hi limb layout).
