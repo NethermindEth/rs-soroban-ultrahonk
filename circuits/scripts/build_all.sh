@@ -140,12 +140,14 @@ install_bb
 if [[ "$#" -gt 0 ]]; then
   TARGETS=("$@")
 else
-  mapfile -t TARGETS < <(
+  TARGETS=()
+  while IFS= read -r line; do
+    TARGETS+=("$line")
+  done < <(
     find "$ROOT" -mindepth 1 -maxdepth 1 -type d \
-      ! -name scripts \
-      -exec test -f '{}/Nargo.toml' ';' -print \
-      | xargs -n1 basename
-  )
+        ! -name scripts \
+        -exec sh -c '[ -f "$1/Nargo.toml" ] && basename "$1"' _ {} \;
+    )
 fi
 
 for name in "${TARGETS[@]}"; do
