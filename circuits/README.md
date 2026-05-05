@@ -9,7 +9,7 @@ circuits/
   simple_circuit/  Nargo.toml, Prover.toml, src/main.nr, target/
   fib_chain/       Nargo.toml, Prover.toml, src/main.nr, target/
   tornado/         Nargo.toml, Prover.toml, src/main.nr, target/
-  scripts/         build_all.sh, build_one.sh
+  scripts/         build_all.sh
 ```
 
 Each circuit directory must contain a `Nargo.toml`. The build scripts discover
@@ -21,7 +21,7 @@ Build every circuit, one circuit, or a selected list:
 
 ```bash
 ./circuits/scripts/build_all.sh
-./circuits/scripts/build_one.sh simple_circuit
+./circuits/scripts/build_all.sh simple_circuit
 ./circuits/scripts/build_all.sh simple_circuit fib_chain
 ```
 
@@ -42,7 +42,7 @@ After a successful build, `circuits/<name>/target/` contains:
 1. Create `circuits/<name>/src/main.nr`.
 2. Add `circuits/<name>/Nargo.toml`.
 3. Add or generate `circuits/<name>/Prover.toml`.
-4. Run `./circuits/scripts/build_one.sh <name>`.
+4. Run `./circuits/scripts/build_all.sh <name>`.
 5. Point tests or example contracts at `circuits/<name>/target/`.
 
 For `tornado`, the build script regenerates `Prover.toml` through `contracts/tornado_classic/contracts/examples/populate_publics.rs` by default.
