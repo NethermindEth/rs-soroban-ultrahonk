@@ -137,6 +137,11 @@ This contract does not enforce access control:
 
 ## Tests
 
+> **Note:** Integration tests include circuit artifacts (VK, proof, public inputs) via `include_bytes!`. You must build the circuits first before running tests:
+> ```bash
+> just build-circuits
+> ```
+
 Run all unit and integration tests across the Cargo workspace (including `rs-soroban-ultrahonk` and `tornado_classic`):
 
 ```bash
