@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use identity::{IdentityContract, IdentityContractClient};
 use soroban_sdk::{testutils::Ledger, Env};
 use ultrahonk_test_utils::Fixture;
