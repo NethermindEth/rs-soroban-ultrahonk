@@ -40,11 +40,23 @@ interface Artifacts {
 
 interface MeasureResult {
   cpu: bigint;
-  mem: bigint;
+  readBytes: bigint;
+  writeBytes: bigint;
   minFee: bigint;
-  txSize: number;
+  txEnvelopeSize: number;
   proofSize: number;
   publicInputsSize: number;
+  // Populated only when --submit is used.
+  actual?: ActualResult;
+}
+
+interface ActualResult {
+  txHash: string;
+  ledger: number;
+  feeCharged: bigint;
+  nonRefundableResourceFee?: bigint;
+  refundableResourceFee?: bigint;
+  rentFee?: bigint;
 }
 
 function loadArtifacts(datasetDir: string): Artifacts {
@@ -79,13 +91,72 @@ function bigIntFromXdr(value?: xdr.Int64 | xdr.Uint64 | number | string | null):
   return BigInt(value.toString());
 }
 
+async function pollForFinal(
+  server: SorobanRpc.Server,
+  hash: string,
+  timeoutMs = 60_000,
+  intervalMs = 2_000
+): Promise<SorobanRpc.Api.RawGetTransactionResponse> {
+  // Use the raw response so we don't depend on the SDK's auto-parser, which
+  // breaks against newer protocols (e.g. TransactionMeta v4 on protocol 23+).
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const resp = await server._getTransaction(hash);
+    if (resp.status !== SorobanRpc.Api.GetTransactionStatus.NOT_FOUND) {
+      return resp;
+    }
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  throw new Error(`Timed out waiting for tx ${hash} to land in a ledger`);
+}
+
+function extractActual(
+  hash: string,
+  resp: SorobanRpc.Api.RawGetTransactionResponse
+): ActualResult {
+  // TransactionResult XDR is stable across protocols, so feeCharged is safe
+  // to decode even when the rest of the response uses a newer meta version
+  // the SDK doesn't recognize yet.
+  let feeCharged = 0n;
+  if (resp.resultXdr) {
+    const result = xdr.TransactionResult.fromXDR(resp.resultXdr, 'base64');
+    feeCharged = bigIntFromXdr(result.feeCharged());
+  }
+  const out: ActualResult = {
+    txHash: hash,
+    ledger: resp.ledger ?? 0,
+    feeCharged,
+  };
+  // Try to decode the Soroban fee breakdown. Best-effort: skip silently if
+  // the meta is a version we don't know how to read.
+  if (resp.resultMetaXdr) {
+    try {
+      const meta = xdr.TransactionMeta.fromXDR(resp.resultMetaXdr, 'base64');
+      if (meta.switch() === 3) {
+        const sorobanMeta = meta.v3().sorobanMeta();
+        const ext = sorobanMeta?.ext();
+        if (ext && ext.switch() === 1) {
+          const v1 = ext.v1();
+          out.nonRefundableResourceFee = bigIntFromXdr(v1.totalNonRefundableResourceFeeCharged());
+          out.refundableResourceFee = bigIntFromXdr(v1.totalRefundableResourceFeeCharged());
+          out.rentFee = bigIntFromXdr(v1.rentFeeCharged());
+        }
+      }
+    } catch {
+      // Meta uses a protocol the SDK can't parse — feeCharged alone is fine.
+    }
+  }
+  return out;
+}
+
 async function measureMethod(
   server: SorobanRpc.Server,
   keypair: Keypair,
   networkPassphrase: string,
   contractId: string,
   method: string,
-  args: xdr.ScVal[]
+  args: xdr.ScVal[],
+  submit: boolean
 ): Promise<MeasureResult> {
   const account = await server.getAccount(keypair.publicKey());
   const contract = new Contract(contractId);
@@ -104,18 +175,42 @@ async function measureMethod(
 
   const resources = sim.transactionData.build().resources();
   const cpu = bigIntFromXdr(resources.instructions());
-  const mem =
-    bigIntFromXdr(resources.readBytes()) + bigIntFromXdr(resources.writeBytes());
+  const readBytes = bigIntFromXdr(resources.readBytes());
+  const writeBytes = bigIntFromXdr(resources.writeBytes());
   const minFee = bigIntFromXdr(sim.minResourceFee);
-  const txSize = sim.transactionData.build().toXDR().length;
+
+  // Sign the *assembled* tx (sim resources + footprint attached) so the
+  // envelope size reflects what's actually broadcast on-chain — including the
+  // InvokeHostFunctionOp args (proof + public inputs).
+  const assembled = SorobanRpc.assembleTransaction(tx, sim).build();
+  assembled.sign(keypair);
+  const txEnvelopeSize = assembled.toEnvelope().toXDR().length;
+
+  let actual: ActualResult | undefined;
+  if (submit) {
+    const send = await server.sendTransaction(assembled);
+    if (send.status !== 'PENDING') {
+      throw new Error(
+        `sendTransaction returned status ${send.status}: ${JSON.stringify(send)}`
+      );
+    }
+    console.log(`Submitted tx ${send.hash}; waiting for ledger close...`);
+    const final = await pollForFinal(server, send.hash);
+    actual = extractActual(send.hash, final);
+    if (final.status === SorobanRpc.Api.GetTransactionStatus.FAILED) {
+      console.error(`Tx ${send.hash} FAILED on-chain (still reporting fee charged).`);
+    }
+  }
 
   return {
     cpu,
-    mem,
+    readBytes,
+    writeBytes,
     minFee,
-    txSize,
+    txEnvelopeSize,
     proofSize: args[1].bytes()?.length ?? 0,
     publicInputsSize: args[0].bytes()?.length ?? 0,
+    actual,
   };
 }
 
@@ -132,11 +227,29 @@ function printResult(name: string, result: MeasureResult) {
 
   console.log(`\n\x1b[1m\x1b[36m=== Performance Report: ${name} ===\x1b[0m`);
   console.log(`${label('CPU Instructions')} : ${result.cpu.toLocaleString()} (${cpuPercent}% of limit)`);
-  console.log(`${label('Ledger I/O (Bytes)')} : ${result.mem.toLocaleString()}`);
+  console.log(`${label('Ledger Read Bytes')} : ${result.readBytes.toLocaleString()}`);
+  console.log(`${label('Ledger Write Bytes')} : ${result.writeBytes.toLocaleString()}`);
   console.log(`${label('Min Resource Fee')} : ${formatStroops(result.minFee)}`);
-  console.log(`${label('Transaction Size')} : ${result.txSize.toLocaleString()} bytes`);
+  console.log(`${label('Tx Envelope Size')} : ${result.txEnvelopeSize.toLocaleString()} bytes`);
   console.log(`${label('Proof Size')} : ${result.proofSize.toLocaleString()} bytes`);
   console.log(`${label('Public Inputs Size')} : ${result.publicInputsSize.toLocaleString()} bytes`);
+
+  if (result.actual) {
+    const a = result.actual;
+    console.log(`\n\x1b[1m\x1b[36m--- Actual on-chain (tx ${a.txHash.slice(0, 12)}...) ---\x1b[0m`);
+    console.log(`${label('Ledger')} : ${a.ledger.toLocaleString()}`);
+    console.log(`${label('Fee Charged')} : ${formatStroops(a.feeCharged)}`);
+    if (a.nonRefundableResourceFee !== undefined) {
+      console.log(`${label('  Non-refundable')} : ${formatStroops(a.nonRefundableResourceFee)}`);
+    }
+    if (a.refundableResourceFee !== undefined) {
+      console.log(`${label('  Refundable')} : ${formatStroops(a.refundableResourceFee)}`);
+    }
+    if (a.rentFee !== undefined) {
+      console.log(`${label('  Rent fee')} : ${formatStroops(a.rentFee)}`);
+    }
+  }
+
   console.log(`\x1b[36m${'='.repeat(40 + name.length)}\x1b[0m\n`);
 }
 
@@ -161,6 +274,10 @@ async function main() {
     default: DEFAULT_NETWORK_PASSPHRASE,
     help: 'Network passphrase',
   });
+  parser.add_argument('--submit', {
+    action: 'store_true',
+    help: 'Also submit the tx and report actual fee charged on-chain',
+  });
 
   const args = parser.parse_args();
   const artifacts = loadArtifacts(args.dataset);
@@ -179,7 +296,8 @@ async function main() {
     args.network_passphrase,
     args.contract_id,
     'verify_proof',
-    [publicInputsScVal, proofBytesScVal]
+    [publicInputsScVal, proofBytesScVal],
+    args.submit
   );
   printResult('verify_proof', verifyResult);
 }

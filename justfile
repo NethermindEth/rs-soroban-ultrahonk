@@ -46,6 +46,10 @@ verify contract_id="":
 e2e:
     ./scripts/run_localnet_e2e.sh
 
+# Run the full testnet E2E pipeline (fund → deploy → verify)
+testnet:
+    ./scripts/run_testnet_e2e.sh
+
 # Clean up: stop container and remove generated contract ID
 clean:
     ./scripts/stop_stellar.sh 2>/dev/null || true

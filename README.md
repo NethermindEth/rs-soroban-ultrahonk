@@ -96,6 +96,7 @@ just e2e
 | `just deploy`               | Build circuits, build contract, and deploy to the network       |
 | `just verify [CONTRACT_ID]` | Verify proof on-chain (reads `.contract_id` if no arg given)    |
 | `just e2e`                  | Run the full localnet pipeline in one shot                      |
+| `just testnet`              | Run the full testnet pipeline (fund → deploy → verify)          |
 | `just clean`                | Stop container and remove `.contract_id`                        |
 
 The underlying shell scripts in `scripts/` are still available if you prefer to use them directly.
@@ -111,6 +112,28 @@ See [`circuits/README.md`](circuits/README.md) for the circuit layout, rebuild c
 All Noir circuits live under `/circuits/`. Each circuit keeps its source files and generated artifacts together, with build outputs under `circuits/<name>/target/`.
 
 See [`circuits/README.md`](circuits/README.md) for the circuit layout, rebuild commands, and how to add a new circuit.
+
+## Quickstart (testnet)
+
+The same flow runs against the Stellar public testnet — there is no Docker container to start or stop. Either run the orchestrator:
+
+```bash
+just testnet
+```
+
+or invoke the steps individually after selecting the network:
+
+```bash
+export STELLAR_NETWORK_NAME=testnet
+just fund    # registers testnet profile + friendbot funds 'alice'
+just deploy  # builds + deploys to testnet (CONTRACT_ID saved to .contract_id)
+just verify  # invokes verify_proof on testnet
+```
+
+Notes:
+- `STELLAR_NETWORK_NAME` accepts `local` (default), `testnet`, or `mainnet`. RPC URL and network passphrase are auto-filled — override with `STELLAR_RPC_URL` / `STELLAR_NETWORK_PASSPHRASE` if needed.
+- Cost measurement (the JS report) is skipped on testnet by default because it extracts the source-account secret. Re-enable with `MEASURE_COSTS=1 just verify`. The default report is simulation-only; add `MEASURE_SUBMIT=1` to also submit a separate measurement transaction and print the actual `feeCharged` from the ledger (real cost, costs ~0.014 XLM per run).
+- `mainnet` is supported by config but `just fund` will refuse to call friendbot — fund the source account out-of-band before running `just deploy`.
 
 ## Circuits
 

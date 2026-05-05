@@ -45,12 +45,33 @@ stellar contract invoke \
 
 echo -e "\n${GREEN}Proof successfully verified on-chain!${NC}"
 
-# Now run the measurement script for a detailed report
-echo -e "\n${BLUE}Generating detailed performance report...${NC}"
-SOURCE_SECRET=$(stellar keys secret "$STELLAR_SOURCE_ACCOUNT" | tail -n 1 | tr -d '[:space:]')
-pushd "$ROOT_DIR/scripts/measure_ultrahonk_costs" >/dev/null
-npm run measure -- \
-  --contract-id "$CONTRACT_ID" \
-  --source-secret "$SOURCE_SECRET" \
-  --dataset "$DATASET_DIR"
-popd >/dev/null
+# Cost measurement: enabled on local by default; opt-in elsewhere because it
+# extracts the source account secret to drive a JS measurement run.
+# Override with MEASURE_COSTS=1 or MEASURE_COSTS=0.
+if [[ -z "${MEASURE_COSTS:-}" ]]; then
+  if [[ "$STELLAR_NETWORK_NAME" == "local" ]]; then
+    MEASURE_COSTS=1
+  else
+    MEASURE_COSTS=0
+  fi
+fi
+
+if [[ "$MEASURE_COSTS" == "1" ]]; then
+  echo -e "\n${BLUE}Generating detailed performance report...${NC}"
+  SOURCE_SECRET=$(stellar keys secret "$STELLAR_SOURCE_ACCOUNT" | tail -n 1 | tr -d '[:space:]')
+  SUBMIT_ARG=()
+  if [[ "${MEASURE_SUBMIT:-0}" == "1" ]]; then
+    SUBMIT_ARG=(--submit)
+  fi
+  pushd "$ROOT_DIR/scripts/measure_ultrahonk_costs" >/dev/null
+  npm run measure -- \
+    --contract-id "$CONTRACT_ID" \
+    --source-secret "$SOURCE_SECRET" \
+    --dataset "$DATASET_DIR" \
+    --rpc-url "$STELLAR_RPC_URL" \
+    --network-passphrase "$STELLAR_NETWORK_PASSPHRASE" \
+    "${SUBMIT_ARG[@]}"
+  popd >/dev/null
+else
+  echo -e "\n${BLUE}Skipping cost measurement on '$STELLAR_NETWORK_NAME' (set MEASURE_COSTS=1 to enable).${NC}"
+fi
