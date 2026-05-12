@@ -11,7 +11,8 @@ fn register_client<'a>(env: &'a Env, vk_bytes: &Bytes) -> UltraHonkVerifierContr
 fn verify_simple_circuit_proof_succeeds() {
     let vk_bytes_raw: &[u8] = include_bytes!("../../../circuits/simple_circuit/target/vk");
     let proof_bin: &[u8] = include_bytes!("../../../circuits/simple_circuit/target/proof");
-    let pub_inputs_bin: &[u8] = include_bytes!("../../../circuits/simple_circuit/target/public_inputs");
+    let pub_inputs_bin: &[u8] =
+        include_bytes!("../../../circuits/simple_circuit/target/public_inputs");
 
     let env = Env::default();
     env.cost_estimate().budget().reset_unlimited();
@@ -49,7 +50,8 @@ fn verify_fib_chain_proof_succeeds() {
 fn print_budget_for_deploy_and_verify() {
     let vk_bytes_raw: &[u8] = include_bytes!("../../../circuits/simple_circuit/target/vk");
     let proof_bin: &[u8] = include_bytes!("../../../circuits/simple_circuit/target/proof");
-    let pub_inputs_bin: &[u8] = include_bytes!("../../../circuits/simple_circuit/target/public_inputs");
+    let pub_inputs_bin: &[u8] =
+        include_bytes!("../../../circuits/simple_circuit/target/public_inputs");
 
     let env = Env::default();
 
