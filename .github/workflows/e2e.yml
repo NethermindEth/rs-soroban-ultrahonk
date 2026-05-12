@@ -1,16 +1,26 @@
-name: CI
+name: E2E
 
 on:
   push:
     branches: dev
   pull_request:
     branches: dev
+    paths:
+      - 'contracts/**'
+      - 'scripts/**'
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
 
 env:
   CARGO_TERM_COLOR: always
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test:
+  localnet-e2e:
     runs-on: ubuntu-latest
 
     steps:
@@ -51,24 +61,5 @@ jobs:
       - name: Setup environment
         run: ./scripts/setup.sh
 
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-
-      - name: Build optimized contract Wasm
-        run: stellar contract build --optimize
-
-      - name: Build tornado contracts Wasm (wasm-cost)
-        run: stellar contract build --optimize --features wasm-cost
-        working-directory: contracts/tornado_classic/contracts
-
-      - name: Build root circuits
-        run: ./contracts/rs-soroban-ultrahonk/tests/build_circuits.sh
-
-      - name: Build tornado circuits
-        run: ./contracts/tornado_classic/circuit/scripts/gen_artifacts.sh
-
-      - name: Run workspace tests
-        run: cargo test --workspace --verbose
-
-      - name: Run integration tests
-        run: RUST_TEST_THREADS=1 cargo test -p rs-soroban-ultrahonk --test integration_tests -- --nocapture
+      - name: Run localnet end-to-end verify_proof + measurement
+        run: scripts/run_localnet_e2e.sh

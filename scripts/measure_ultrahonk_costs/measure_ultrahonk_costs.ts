@@ -42,6 +42,9 @@ interface MeasureResult {
   cpu: bigint;
   mem: bigint;
   minFee: bigint;
+  txSize: number;
+  proofSize: number;
+  publicInputsSize: number;
 }
 
 function loadArtifacts(datasetDir: string): Artifacts {
@@ -104,18 +107,37 @@ async function measureMethod(
   const mem =
     bigIntFromXdr(resources.readBytes()) + bigIntFromXdr(resources.writeBytes());
   const minFee = bigIntFromXdr(sim.minResourceFee);
+  const txSize = sim.transactionData.build().toXDR().length;
 
-  return { cpu, mem, minFee };
+  return {
+    cpu,
+    mem,
+    minFee,
+    txSize,
+    proofSize: args[1].bytes()?.length ?? 0,
+    publicInputsSize: args[0].bytes()?.length ?? 0,
+  };
+}
+
+function formatStroops(stroops: bigint): string {
+  const xlm = Number(stroops) / 10_000_000;
+  return `${stroops} stroops (${xlm.toFixed(7)} XLM)`;
 }
 
 function printResult(name: string, result: MeasureResult) {
-  const cpu = result.cpu.toString();
-  const mem = result.mem.toString();
-  const fee = result.minFee.toString();
-  console.log(`\n=== ${name} ===`);
-  console.log(`CPU instructions : ${cpu}`);
-  console.log(`Memory bytes     : ${mem}`);
-  console.log(`Min resource fee : ${fee} stroops`);
+  const cpuLimit = 100_000_000n;
+  const cpuPercent = ((Number(result.cpu) * 100) / Number(cpuLimit)).toFixed(2);
+
+  const label = (text: string) => `\x1b[1m${text.padEnd(25)}\x1b[0m`;
+
+  console.log(`\n\x1b[1m\x1b[36m=== Performance Report: ${name} ===\x1b[0m`);
+  console.log(`${label('CPU Instructions')} : ${result.cpu.toLocaleString()} (${cpuPercent}% of limit)`);
+  console.log(`${label('Ledger I/O (Bytes)')} : ${result.mem.toLocaleString()}`);
+  console.log(`${label('Min Resource Fee')} : ${formatStroops(result.minFee)}`);
+  console.log(`${label('Transaction Size')} : ${result.txSize.toLocaleString()} bytes`);
+  console.log(`${label('Proof Size')} : ${result.proofSize.toLocaleString()} bytes`);
+  console.log(`${label('Public Inputs Size')} : ${result.publicInputsSize.toLocaleString()} bytes`);
+  console.log(`\x1b[36m${'='.repeat(40 + name.length)}\x1b[0m\n`);
 }
 
 async function main() {
