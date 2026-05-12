@@ -100,6 +100,12 @@ just e2e
 
 The underlying shell scripts in `scripts/` are still available if you prefer to use them directly.
 
+## Circuits
+
+All Noir circuits live under `/circuits/`. Each circuit keeps its source files and generated artifacts together, with build outputs under `circuits/<name>/target/`.
+
+See [`circuits/README.md`](circuits/README.md) for the circuit layout, rebuild commands, and how to add a new circuit.
+
 ## Advanced usage
 
 ### Use the JS helper script
@@ -110,7 +116,7 @@ Expects a dataset folder with `public_inputs`, `proof` (the VK is already on-cha
 cd scripts/invoke_ultrahonk
 npm install
 npx ts-node invoke_ultrahonk.ts invoke \
-  --dataset ../../contracts/rs-soroban-ultrahonk/tests/simple_circuit/target \
+  --dataset ../../circuits/simple_circuit/target \
   --contract-id $(cat ../../.contract_id) \
   --network local \
   --source-account alice \

@@ -24,7 +24,7 @@ npx ts-node invoke_ultrahonk.ts prepare
 ```
 
 Options:
-- `--dataset <path>`: Directory containing `public_inputs` and `proof` (default: `../../tests/simple_circuit/target`)
+- `--dataset <path>`: Directory containing `public_inputs` and `proof` (default: `../../circuits/simple_circuit/target`)
 - `--public-inputs <path>`: Override public_inputs path
 - `--proof <path>`: Override proof path
 

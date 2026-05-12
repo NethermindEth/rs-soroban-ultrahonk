@@ -10,7 +10,7 @@
  *     --contract-id <CONTRACT_ID> \
  *     --source-secret <SECRET> \
  *     --rpc-url http://localhost:8000/soroban/rpc \
- *     --dataset ../../tests/simple_circuit/target
+ *     --dataset ../../circuits/simple_circuit/target
  */
 
 import * as fs from 'fs';
@@ -28,7 +28,7 @@ import {
 } from '@stellar/stellar-sdk';
 
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
-const DEFAULT_DATASET_DIR = path.join(PROJECT_ROOT, 'tests', 'simple_circuit', 'target');
+const DEFAULT_DATASET_DIR = path.join(PROJECT_ROOT, 'circuits', 'simple_circuit', 'target');
 const DEFAULT_RPC_URL = 'http://localhost:8000/soroban/rpc';
 const DEFAULT_NETWORK_PASSPHRASE = Networks.STANDALONE;
 const FIELD_BYTES = 32;

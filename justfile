@@ -24,9 +24,10 @@ stop:
 fund:
     ./scripts/fund_account.sh
 
-# Build circuits (proof, vk, public_inputs)
-build-circuits:
-    bash ./contracts/rs-soroban-ultrahonk/tests/build_circuits.sh
+# Build circuits (proof, vk, public_inputs). Builds all circuits by default;
+# pass one or more names to build only those (e.g. `just build-circuits simple_circuit`).
+build-circuits *names="":
+    bash ./circuits/scripts/build_all.sh {{names}}
 
 # Build the Soroban contract WASM (pass extra args to `stellar contract build`)
 build-contract *args="":

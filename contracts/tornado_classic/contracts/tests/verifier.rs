@@ -18,9 +18,9 @@ fn verify_proof_with_constructor_vk() {
     env.cost_estimate().budget().reset_unlimited();
     let _ = env.host().set_diagnostic_level(DiagnosticLevel::None);
 
-    let vk_bin: &[u8] = include_bytes!("../../circuit/target/vk");
-    let proof_bin: &[u8] = include_bytes!("../../circuit/target/proof");
-    let pub_inputs_bin: &[u8] = include_bytes!("../../circuit/target/public_inputs");
+    let vk_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/vk");
+    let proof_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/proof");
+    let pub_inputs_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/public_inputs");
 
     assert_eq!(proof_bin.len(), PROOF_BYTES);
 

@@ -18,7 +18,7 @@ npm run measure -- \
   --contract-id <CONTRACT_ID> \
   --source-secret <SECRET_KEY> \
   --rpc-url http://localhost:8000/soroban/rpc \
-  --dataset ../../tests/simple_circuit/target
+  --dataset ../../circuits/simple_circuit/target
 ```
 
 Options:
@@ -27,7 +27,7 @@ Options:
 - `--source-secret` – secret key used to sign requests (required)
 - `--rpc-url` – Soroban RPC endpoint (default `http://localhost:8000/soroban/rpc`)
 - `--network-passphrase` – network passphrase (default Standalone)
-- `--dataset` – dataset directory (default `../../tests/simple_circuit/target`)
+- `--dataset` – dataset directory (default `../../circuits/simple_circuit/target`)
 
 The script simulates `verify_proof` using the dataset’s `public_inputs` and `proof` files.
 Make sure the contract was deployed with a VK via the constructor first.
