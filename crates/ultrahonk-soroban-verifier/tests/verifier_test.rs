@@ -5,7 +5,8 @@ use ultrahonk_soroban_verifier::UltraHonkVerifier;
 fn run(dir: &str) -> Result<(), String> {
     let path = Path::new(dir);
     let env = Env::default();
-    env.ledger().set_protocol_version(25);
+    env.ledger().set_protocol_version(26);
+    env.cost_estimate().budget().reset_unlimited();
 
     // Proof bytes
     let proof_bytes: Vec<u8> = fs::read(path.join("proof")).map_err(|e| e.to_string())?;
@@ -20,7 +21,7 @@ fn run(dir: &str) -> Result<(), String> {
     let public_inputs = fs::read(path.join("public_inputs")).map_err(|e| e.to_string())?;
     let public_inputs = Bytes::from_slice(&env, &public_inputs);
     verifier
-        .verify(&proof, &public_inputs)
+        .verify(&env, &proof, &public_inputs)
         .map_err(|e| format!("{e:?}"))?;
     Ok(())
 }

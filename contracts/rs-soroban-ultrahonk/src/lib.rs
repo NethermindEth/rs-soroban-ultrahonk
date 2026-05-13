@@ -44,7 +44,7 @@ impl UltraHonkVerifierContract {
 
         // Verify
         verifier
-            .verify(&proof_bytes, &public_inputs)
+            .verify(&env, &proof_bytes, &public_inputs)
             .map_err(|_| Error::VerificationFailed)?;
         Ok(())
     }

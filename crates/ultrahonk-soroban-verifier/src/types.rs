@@ -1,4 +1,6 @@
 use crate::field::Fr;
+use soroban_sdk::crypto::bn254::Bn254G1Affine;
+use soroban_sdk::Env;
 
 pub const CONST_PROOF_SIZE_LOG_N: usize = 28;
 pub const NUMBER_OF_SUBRELATIONS: usize = 26;
@@ -61,51 +63,43 @@ impl Wire {
 }
 
 /// A G1 point in affine coordinates.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct G1Point {
-    pub x: [u8; 32],
-    pub y: [u8; 32],
-}
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct G1Point(pub Bn254G1Affine);
 
 impl G1Point {
-    pub fn from_xy(x: [u8; 32], y: [u8; 32]) -> Self {
-        G1Point { x, y }
+    #[inline(always)]
+    pub fn as_bn254(&self) -> &Bn254G1Affine {
+        &self.0
     }
 
-    pub fn from_bytes(bytes: [u8; 64]) -> Self {
-        let mut x = [0u8; 32];
-        let mut y = [0u8; 32];
-        x.copy_from_slice(&bytes[..32]);
-        y.copy_from_slice(&bytes[32..]);
-        G1Point { x, y }
+    pub fn from_xy(env: &Env, x: &[u8; 32], y: &[u8; 32]) -> Self {
+        let mut bytes: [u8; 64] = [0u8; 64];
+        bytes[..32].copy_from_slice(x);
+        bytes[32..].copy_from_slice(y);
+        Self::from_bytes(env, &bytes)
     }
 
+    #[inline(always)]
+    pub fn from_bytes(env: &Env, bytes: &[u8; 64]) -> Self {
+        G1Point(Bn254G1Affine::from_array(env, bytes))
+    }
+
+    #[inline(always)]
     pub fn to_bytes(&self) -> [u8; 64] {
-        let mut out = [0u8; 64];
-        out[..32].copy_from_slice(&self.x);
-        out[32..].copy_from_slice(&self.y);
-        out
+        self.0.to_array()
     }
 
-    pub fn infinity() -> Self {
-        G1Point {
-            x: [0u8; 32],
-            y: [0u8; 32],
-        }
+    #[inline(always)]
+    pub fn infinity(env: &Env) -> Self {
+        G1Point(Bn254G1Affine::from_array(env, &[0u8; 64]))
     }
 
-    pub fn generator() -> Self {
+    pub fn generator(env: &Env) -> Self {
         let mut x = [0u8; 32];
         let mut y = [0u8; 32];
         x[31] = 1;
         y[31] = 2;
-        G1Point { x, y }
-    }
-}
-
-impl Default for G1Point {
-    fn default() -> Self {
-        G1Point::infinity()
+        G1Point::from_xy(env, &x, &y)
     }
 }
 

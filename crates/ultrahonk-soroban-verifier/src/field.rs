@@ -1,84 +1,111 @@
-use ark_bn254::Fr as ArkFr;
-use ark_ff::BigInteger256;
-use ark_ff::{Field, PrimeField, Zero};
+pub use soroban_sdk::crypto::bn254::Bn254Fr as ArkFr;
+
+use core::array::repeat;
 use core::ops::{Add, Mul, Neg, Sub};
-use hex;
+use soroban_sdk::{BytesN, Env, U256};
 
-#[cfg(not(feature = "std"))]
-use alloc::{borrow::ToOwned, string::String};
-
-#[inline(always)]
-fn normalize_hex(s: &str) -> String {
-    let raw = s.trim_start_matches("0x");
-    if raw.len() & 1 == 1 {
-        let mut out = String::with_capacity(raw.len() + 1);
-        out.push('0');
-        out.push_str(raw);
-        out
-    } else {
-        raw.to_owned()
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Fr(pub ArkFr);
 
 impl Fr {
-    /// Construct from u64.
-    pub fn from_u64(x: u64) -> Self {
-        Fr(ArkFr::from(x))
+    #[inline(always)]
+    pub fn zero(env: &Env) -> Self {
+        Self(ArkFr::from_u256(U256::from_u32(env, 0)))
     }
 
-    /// Construct from hex string (with or without 0x prefix).
-    /// Normalize to even digits before `hex::decode` so OddLength exception won't occur.
-    #[allow(clippy::should_implement_trait)]
-    pub fn from_str(s: &str) -> Self {
-        let bytes = hex::decode(normalize_hex(s)).expect("hex decode failed");
-        let mut padded = [0u8; 32];
-        let offset = 32 - bytes.len();
-        padded[offset..].copy_from_slice(&bytes);
-        Self::from_bytes(&padded)
+    #[inline(always)]
+    pub fn one(env: &Env) -> Self {
+        Self(ArkFr::from_u256(U256::from_u32(env, 1)))
     }
 
-    /// Construct from a 32-byte big-endian array.
-    pub fn from_bytes(bytes: &[u8; 32]) -> Self {
-        // ark-ff takes LE (little-endian) so BE → LE
-        let mut tmp = *bytes;
-        tmp.reverse();
-        Fr(ArkFr::from_le_bytes_mod_order(&tmp))
+    #[inline(always)]
+    pub fn zero_array<const N: usize>(env: &Env) -> [Self; N] {
+        repeat(Self::zero(env))
+    }
+
+    #[inline(always)]
+    pub fn from_u64(env: &Env, x: u64) -> Self {
+        Self(ArkFr::from_u256(U256::from_u128(env, x as u128)))
+    }
+
+    #[inline(always)]
+    pub fn from_array(env: &Env, value: &[u8; 32]) -> Self {
+        Self(ArkFr::from_bytes(BytesN::from_array(env, value)))
+    }
+
+    #[inline(always)]
+    pub fn from_parts(env: &Env, lolo: u64, lohi: u64, hilo: u64, hihi: u64) -> Self {
+        Self(ArkFr::from_u256(U256::from_parts(
+            env, lolo, lohi, hilo, hihi,
+        )))
+    }
+
+    /// Precomputed NEG_HALF = (p - 1)/2 in BN254 scalar field.
+    #[inline(always)]
+    pub fn neg_half(env: &Env) -> Self {
+        Self::from_parts(
+            env,
+            0x183227397098d014,
+            0xdc2822db40c0ac2e,
+            0x9419f4243cdcb848,
+            0xa1f0fac9f8000000,
+        )
+    }
+
+    /// Internal matrix diagonal values for Poseidon hash.
+    #[inline(always)]
+    pub fn internal_matrix_diagonal(env: &Env) -> [Self; 4] {
+        [
+            Self::from_parts(
+                env,
+                0x10dc6e9c006ea38b,
+                0x04b1e03b4bd9490c,
+                0x0d03f98929ca1d7f,
+                0xb56821fd19d3b6e7,
+            ),
+            Self::from_parts(
+                env,
+                0x0c28145b6a44df3e,
+                0x0149b3d0a30b3bb5,
+                0x99df9756d4dd9b84,
+                0xa86b38cfb45a740b,
+            ),
+            Self::from_parts(
+                env,
+                0x00544b8338791518,
+                0xb2c7645a50392798,
+                0xb21f75bb60e35961,
+                0x70067d00141cac15,
+            ),
+            Self::from_parts(
+                env,
+                0x222c01175718386f,
+                0x2e2e82eb122789e3,
+                0x52e105a3b8fa8526,
+                0x13bc534433ee428b,
+            ),
+        ]
     }
 
     /// Convert to 32-byte big-endian representation.
     #[inline(always)]
     pub fn to_bytes(&self) -> [u8; 32] {
-        let bi: BigInteger256 = self.0.into_bigint();
-        let mut out = [0u8; 32];
-        for (i, limb) in bi.0.iter().rev().enumerate() {
-            out[i * 8..(i + 1) * 8].copy_from_slice(&limb.to_be_bytes());
-        }
-        out
+        self.0.to_bytes().to_array()
     }
 
-    pub fn inverse(&self) -> Option<Self> {
-        self.0.inverse().map(Fr)
+    #[inline(always)]
+    pub fn inverse(&self) -> Self {
+        Self(self.0.inv())
     }
 
-    pub fn zero() -> Self {
-        Fr(ArkFr::zero())
+    #[inline(always)]
+    pub fn pow(&self, exp: u64) -> Self {
+        Self(self.0.pow(exp))
     }
 
-    pub fn one() -> Self {
-        Fr(ArkFr::ONE)
-    }
-
-    pub fn pow(&self, exp: u128) -> Self {
-        let mut bits = [0u64; 4];
-        bits[0] = exp as u64;
-        Fr(self.0.pow(bits))
-    }
-
+    #[inline(always)]
     pub fn is_zero(&self) -> bool {
-        self.0.is_zero()
+        *self.0.as_u256() == U256::from_u32(self.0.env(), 0)
     }
 }
 
@@ -95,65 +122,95 @@ pub fn batch_inverse(vals: &[Fr], out: &mut [Fr]) -> Result<(), &'static str> {
     }
 
     // 1) Build prefix products in `out`: out[i] = vals[0] * vals[1] * ... * vals[i]
-    out[0] = vals[0];
+    out[0] = vals[0].clone();
     for i in 1..n {
-        out[i] = out[i - 1] * vals[i];
+        out[i] = &out[i - 1] * &vals[i];
     }
 
     // 2) Invert the total product
-    let mut inv_acc = out[n - 1]
-        .inverse()
-        .ok_or("batch_inverse: product is zero (at least one input element is zero)")?;
+    let mut inv_acc = out[n - 1].inverse();
 
     // 3) Sweep back to recover individual inverses
     for i in (1..n).rev() {
-        out[i] = inv_acc * out[i - 1];
-        inv_acc = inv_acc * vals[i];
+        out[i] = &inv_acc * &out[i - 1];
+        inv_acc = inv_acc * &vals[i];
     }
     out[0] = inv_acc;
     Ok(())
 }
 
-impl Add for Fr {
-    type Output = Fr;
-    fn add(self, rhs: Fr) -> Fr {
-        Fr(self.0 + rhs.0)
-    }
+macro_rules! binop_fr {
+    ($trait:ident, $method:ident, $host_fn:ident, $op:tt) => {
+        impl $trait for Fr {
+            type Output = Fr;
+
+            fn $method(self, rhs: Fr) -> Fr {
+                Fr(self.0 $op rhs.0)
+            }
+        }
+
+        impl $trait<&Fr> for Fr {
+            type Output = Fr;
+
+            fn $method(self, rhs: &Fr) -> Fr {
+                Fr(self.0.env().crypto().bn254().$host_fn(&self.0, &rhs.0))
+            }
+        }
+
+        impl $trait<Fr> for &Fr {
+            type Output = Fr;
+
+            fn $method(self, rhs: Fr) -> Fr {
+                Fr(self.0.env().crypto().bn254().$host_fn(&self.0, &rhs.0))
+            }
+        }
+
+        impl $trait for &Fr {
+            type Output = Fr;
+
+            fn $method(self, rhs: &Fr) -> Fr {
+                Fr(self.0.env().crypto().bn254().$host_fn(&self.0, &rhs.0))
+            }
+        }
+    };
 }
 
-impl Sub for Fr {
-    type Output = Fr;
-    fn sub(self, rhs: Fr) -> Fr {
-        Fr(self.0 - rhs.0)
-    }
-}
-
-impl Mul for Fr {
-    type Output = Fr;
-    fn mul(self, rhs: Fr) -> Fr {
-        Fr(self.0 * rhs.0)
-    }
-}
+binop_fr!(Add, add, fr_add, +);
+binop_fr!(Sub, sub, fr_sub, -);
+binop_fr!(Mul, mul, fr_mul, *);
 
 impl Neg for Fr {
     type Output = Fr;
     fn neg(self) -> Fr {
-        Fr(-self.0)
+        Fr::zero(&self.0.env()) - &self
+    }
+}
+
+impl Neg for &Fr {
+    type Output = Fr;
+    fn neg(self) -> Fr {
+        Fr::zero(&self.0.env()) - self
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use soroban_sdk::Env;
 
     #[test]
     fn batch_inverse_round_trip() {
-        let inputs = [Fr::from_u64(2), Fr::from_u64(3), Fr::from_u64(5)];
-        let mut inverses = [Fr::zero(); 3];
+        let env = Env::default();
+        let inputs = [
+            Fr::from_u64(&env, 2),
+            Fr::from_u64(&env, 3),
+            Fr::from_u64(&env, 5),
+        ];
+        let mut inverses = [Fr::zero(&env), Fr::zero(&env), Fr::zero(&env)];
         batch_inverse(&inputs, &mut inverses).unwrap();
 
         for i in 0..3 {
-            assert_eq!(inputs[i] * inverses[i], Fr::one());
+            assert_eq!(&inputs[i] * &inverses[i], Fr::one(&env));
         }
     }
 
@@ -166,19 +223,25 @@ mod tests {
 
     #[test]
     fn batch_inverse_single() {
-        let inputs = [Fr::from_u64(42)];
-        let mut inverses = [Fr::zero(); 1];
+        let env = Env::default();
+        let inputs = [Fr::from_u64(&env, 42)];
+        let mut inverses = [Fr::zero(&env)];
         batch_inverse(&inputs, &mut inverses).unwrap();
-        assert_eq!(inputs[0] * inverses[0], Fr::one());
+        assert_eq!(&inputs[0] * &inverses[0], Fr::one(&env));
     }
 
     #[test]
     fn batch_inverse_all_equal() {
-        let inputs = [Fr::from_u64(7), Fr::from_u64(7), Fr::from_u64(7)];
-        let mut inverses = [Fr::zero(); 3];
+        let env = Env::default();
+        let inputs = [
+            Fr::from_u64(&env, 7),
+            Fr::from_u64(&env, 7),
+            Fr::from_u64(&env, 7),
+        ];
+        let mut inverses = [Fr::zero(&env), Fr::zero(&env), Fr::zero(&env)];
         batch_inverse(&inputs, &mut inverses).unwrap();
 
-        let expected_inv = Fr::from_u64(7).inverse().unwrap();
+        let expected_inv = Fr::from_u64(&env, 7).inverse();
         for i in 0..3 {
             assert_eq!(inverses[i], expected_inv);
         }
@@ -186,8 +249,9 @@ mod tests {
 
     #[test]
     fn hex_round_trip() {
-        let hex_str = "0x1234567890abcdef";
-        let fr = Fr::from_str(hex_str);
+        let env = Env::default();
+        let hex_parts = [0, 0, 0, 0x1234567890abcdef];
+        let fr = Fr::from_parts(&env, hex_parts[0], hex_parts[1], hex_parts[2], hex_parts[3]);
         let bytes = fr.to_bytes();
 
         #[cfg(not(feature = "std"))]
@@ -200,6 +264,6 @@ mod tests {
         for b in &bytes[24..32] {
             out_hex.push_str(&format!("{:02x}", b));
         }
-        assert_eq!(out_hex, hex_str);
+        assert_eq!(out_hex, "0x1234567890abcdef");
     }
 }

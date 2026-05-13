@@ -15,7 +15,8 @@ use ultrahonk_test_utils::{mutate_byte, truncate, Fixture};
 /// Set up a Soroban test environment with the required protocol version.
 fn test_env() -> Env {
     let env = Env::default();
-    env.ledger().set_protocol_version(25);
+    env.ledger().set_protocol_version(26);
+    env.cost_estimate().budget().reset_unlimited();
     env
 }
 
@@ -34,7 +35,7 @@ fn mutated_proof_simple_circuit_fails() {
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
     assert!(
-        v.verify(&proof, &pi).is_err(),
+        v.verify(&env, &proof, &pi).is_err(),
         "mutated proof must not verify (simple_circuit)"
     );
 }
@@ -50,7 +51,7 @@ fn mutated_proof_fib_chain_fails() {
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
     assert!(
-        v.verify(&proof, &pi).is_err(),
+        v.verify(&env, &proof, &pi).is_err(),
         "mutated proof must not verify (fib_chain)"
     );
 }
@@ -74,7 +75,7 @@ fn mutated_vk_simple_circuit_fails() {
             Err(_) => return, // VK parse rejected — good
             Ok(v) => {
                 assert!(
-                    v.verify(&proof, &pi).is_err(),
+                    v.verify(&env, &proof, &pi).is_err(),
                     "mutated VK must not verify (simple_circuit)"
                 );
             }
@@ -109,7 +110,7 @@ fn mutated_vk_fib_chain_fails() {
             Err(_) => return,
             Ok(v) => {
                 assert!(
-                    v.verify(&proof, &pi).is_err(),
+                    v.verify(&env, &proof, &pi).is_err(),
                     "mutated VK must not verify (fib_chain)"
                 );
             }
@@ -144,7 +145,7 @@ fn mutated_public_inputs_simple_circuit_fails() {
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
     assert!(
-        v.verify(&proof, &pi).is_err(),
+        v.verify(&env, &proof, &pi).is_err(),
         "mutated public inputs must not verify (simple_circuit)"
     );
 }
@@ -160,7 +161,7 @@ fn mutated_public_inputs_fib_chain_fails() {
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
     assert!(
-        v.verify(&proof, &pi).is_err(),
+        v.verify(&env, &proof, &pi).is_err(),
         "mutated public inputs must not verify (fib_chain)"
     );
 }
@@ -180,7 +181,7 @@ fn truncated_proof_simple_circuit_panics() {
     let pi = Bytes::from_slice(&env, &f.public_inputs);
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
-    let _ = v.verify(&proof, &pi);
+    let _ = v.verify(&env, &proof, &pi);
 }
 
 #[test]
@@ -194,7 +195,7 @@ fn truncated_proof_fib_chain_panics() {
     let pi = Bytes::from_slice(&env, &f.public_inputs);
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
-    let _ = v.verify(&proof, &pi);
+    let _ = v.verify(&env, &proof, &pi);
 }
 
 // =========================================================================
@@ -211,7 +212,7 @@ fn empty_proof_simple_circuit_panics() {
     let pi = Bytes::from_slice(&env, &f.public_inputs);
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
-    let _ = v.verify(&proof, &pi);
+    let _ = v.verify(&env, &proof, &pi);
 }
 
 #[test]
@@ -224,7 +225,7 @@ fn empty_proof_fib_chain_panics() {
     let pi = Bytes::from_slice(&env, &f.public_inputs);
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
-    let _ = v.verify(&proof, &pi);
+    let _ = v.verify(&env, &proof, &pi);
 }
 
 // =========================================================================
@@ -269,7 +270,7 @@ fn happy_path_small_circuit() {
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
     assert!(
-        v.verify(&proof, &pi).is_ok(),
+        v.verify(&env, &proof, &pi).is_ok(),
         "happy path must verify (small_circuit)"
     );
 }
@@ -285,7 +286,7 @@ fn mutated_proof_small_circuit_fails() {
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
     assert!(
-        v.verify(&proof, &pi).is_err(),
+        v.verify(&env, &proof, &pi).is_err(),
         "mutated proof must not verify (small_circuit)"
     );
 }
@@ -300,7 +301,7 @@ fn happy_path_lookup_heavy() {
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
     assert!(
-        v.verify(&proof, &pi).is_ok(),
+        v.verify(&env, &proof, &pi).is_ok(),
         "happy path must verify (lookup_heavy)"
     );
 }
@@ -316,7 +317,7 @@ fn mutated_proof_lookup_heavy_fails() {
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
     assert!(
-        v.verify(&proof, &pi).is_err(),
+        v.verify(&env, &proof, &pi).is_err(),
         "mutated proof must not verify (lookup_heavy)"
     );
 }
@@ -331,7 +332,7 @@ fn happy_path_range_heavy() {
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
     assert!(
-        v.verify(&proof, &pi).is_ok(),
+        v.verify(&env, &proof, &pi).is_ok(),
         "happy path must verify (range_heavy)"
     );
 }
@@ -347,7 +348,7 @@ fn mutated_proof_range_heavy_fails() {
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
     assert!(
-        v.verify(&proof, &pi).is_err(),
+        v.verify(&env, &proof, &pi).is_err(),
         "mutated proof must not verify (range_heavy)"
     );
 }
@@ -362,7 +363,7 @@ fn happy_path_many_pubs() {
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
     assert!(
-        v.verify(&proof, &pi).is_ok(),
+        v.verify(&env, &proof, &pi).is_ok(),
         "happy path must verify (many_pubs)"
     );
 }
@@ -378,7 +379,7 @@ fn mutated_proof_many_pubs_fails() {
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
     assert!(
-        v.verify(&proof, &pi).is_err(),
+        v.verify(&env, &proof, &pi).is_err(),
         "mutated proof must not verify (many_pubs)"
     );
 }

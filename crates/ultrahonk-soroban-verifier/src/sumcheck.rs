@@ -1,9 +1,13 @@
 //! Sum-check verifier
+
+use core::array;
+
 use crate::{
     field::{batch_inverse, Fr},
     relations::accumulate_relation_evaluations,
     types::{Transcript, VerificationKey, BATCHED_RELATION_PARTIAL_LENGTH},
 };
+use soroban_sdk::Env;
 
 const BARY_BYTES: [[u8; 32]; BATCHED_RELATION_PARTIAL_LENGTH] = [
     [
@@ -51,7 +55,7 @@ const BARY_BYTES: [[u8; 32]; BATCHED_RELATION_PARTIAL_LENGTH] = [
 /// Check if the sum of two univariates equals the target value
 #[inline(always)]
 fn check_sum(round_univariate: &[Fr], round_target: Fr) -> bool {
-    let total_sum = round_univariate[0] + round_univariate[1];
+    let total_sum = &round_univariate[0] + &round_univariate[1];
     total_sum == round_target
 }
 
@@ -62,26 +66,30 @@ fn check_sum(round_univariate: &[Fr], round_target: Fr) -> bool {
 fn compute_next_target_sum(
     round_univariate: &[Fr],
     round_challenge: Fr,
+    barycentric_weights: &[Fr; BATCHED_RELATION_PARTIAL_LENGTH],
+    point_indices: &[Fr; BATCHED_RELATION_PARTIAL_LENGTH],
+    one: &Fr,
+    zero: &Fr,
 ) -> Result<Fr, &'static str> {
     // B(χ) = ∏ (χ - i) for i in 0..8
     // Also collect denominators for batch inversion
-    let mut denoms = [Fr::zero(); BATCHED_RELATION_PARTIAL_LENGTH];
-    let mut b_poly = Fr::one();
+    let mut denoms: [Fr; BATCHED_RELATION_PARTIAL_LENGTH] = array::from_fn(|_| zero.clone());
+    let mut b_poly = one.clone();
     for i in 0..BATCHED_RELATION_PARTIAL_LENGTH {
-        let diff = round_challenge - Fr::from_u64(i as u64);
-        b_poly = b_poly * diff;
-        denoms[i] = Fr::from_bytes(&BARY_BYTES[i]) * diff;
+        let diff = &round_challenge - &point_indices[i];
+        b_poly = b_poly * &diff;
+        denoms[i] = &barycentric_weights[i] * &diff;
     }
 
     // Batch invert all 8 denominators with a single Fr::inverse()
-    let mut inv_denoms = [Fr::zero(); BATCHED_RELATION_PARTIAL_LENGTH];
+    let mut inv_denoms: [Fr; BATCHED_RELATION_PARTIAL_LENGTH] = array::from_fn(|_| zero.clone());
     batch_inverse(&denoms, &mut inv_denoms)
         .map_err(|_| "sumcheck: barycentric denominator is zero")?;
 
     // Σ u_i * inv_denom_i
-    let mut acc = Fr::zero();
+    let mut acc = zero.clone();
     for i in 0..BATCHED_RELATION_PARTIAL_LENGTH {
-        acc = acc + (round_univariate[i] * inv_denoms[i]);
+        acc = acc + (&round_univariate[i] * &inv_denoms[i]);
     }
 
     Ok(b_poly * acc)
@@ -89,21 +97,29 @@ fn compute_next_target_sum(
 
 #[inline(always)]
 fn partially_evaluate_pow(
+    one: &Fr,
     gate_challenge: Fr,
     pow_partial_evaluation: Fr,
     round_challenge: Fr,
 ) -> Fr {
-    pow_partial_evaluation * (Fr::one() + round_challenge * (gate_challenge - Fr::one()))
+    pow_partial_evaluation * (one + round_challenge * (gate_challenge - one))
 }
 
 pub fn verify_sumcheck(
+    env: &Env,
     proof: &crate::types::Proof,
     tp: &Transcript,
     vk: &VerificationKey,
 ) -> Result<(), &'static str> {
     let log_n = vk.log_circuit_size as usize;
-    let mut round_target = Fr::zero();
-    let mut pow_partial_evaluation = Fr::one();
+    let zero = Fr::zero(env);
+    let one = Fr::one(env);
+    let barycentric_weights: [Fr; BATCHED_RELATION_PARTIAL_LENGTH] =
+        array::from_fn(|i| Fr::from_array(env, &BARY_BYTES[i]));
+    let point_indices: [Fr; BATCHED_RELATION_PARTIAL_LENGTH] =
+        array::from_fn(|i| Fr::from_u64(env, i as u64));
+    let mut round_target = zero.clone();
+    let mut pow_partial_evaluation = one.clone();
 
     // 1) Each round sum check and next target/pow calculation
     for round in 0..log_n {
@@ -113,10 +129,18 @@ pub fn verify_sumcheck(
             return Err("round failed");
         }
 
-        let round_challenge = tp.sumcheck_u_challenges[round];
-        round_target = compute_next_target_sum(round_univariate, round_challenge)?;
+        let round_challenge = tp.sumcheck_u_challenges[round].clone();
+        round_target = compute_next_target_sum(
+            round_univariate,
+            round_challenge.clone(),
+            &barycentric_weights,
+            &point_indices,
+            &one,
+            &zero,
+        )?;
         pow_partial_evaluation = partially_evaluate_pow(
-            tp.gate_challenges[round],
+            &one,
+            tp.gate_challenges[round].clone(),
             pow_partial_evaluation,
             round_challenge,
         );
@@ -124,6 +148,7 @@ pub fn verify_sumcheck(
 
     // 2) Final relation summation
     let grand_honk_relation_sum = accumulate_relation_evaluations(
+        env,
         &proof.sumcheck_evaluations,
         &tp.rel_params,
         &tp.alphas,

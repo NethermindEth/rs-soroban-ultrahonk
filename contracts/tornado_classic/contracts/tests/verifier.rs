@@ -1,9 +1,8 @@
-use soroban_env_host::DiagnosticLevel;
 use soroban_sdk::{Address, Bytes, Env};
 
-use std::sync::{Mutex, OnceLock};
-
 use rs_soroban_ultrahonk::UltraHonkVerifierContract;
+use soroban_env_host::DiagnosticLevel;
+use std::sync::{Mutex, OnceLock};
 use ultrahonk_soroban_verifier::PROOF_BYTES;
 
 fn verify_lock() -> &'static Mutex<()> {

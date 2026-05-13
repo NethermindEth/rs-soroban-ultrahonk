@@ -14,6 +14,7 @@ pub mod transcript;
 pub mod types;
 pub mod utils;
 pub mod verifier;
+
 pub const PROOF_FIELDS: usize = 456;
 pub const PROOF_BYTES: usize = PROOF_FIELDS * 32;
 

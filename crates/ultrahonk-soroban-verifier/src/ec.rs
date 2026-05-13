@@ -1,7 +1,8 @@
-use crate::{field::Fr, types::G1Point};
+use crate::field::Fr;
+use crate::types::G1Point;
 use soroban_sdk::{
-    crypto::bn254::{Bn254G1Affine, Bn254G2Affine, Fr as Bn254Fr},
-    BytesN, Env, Vec,
+    crypto::bn254::{Bn254Fr, Bn254G1Affine, Bn254G2Affine},
+    Env, Vec,
 };
 
 const RHS_G2_BYTES: [u8; 128] = [
@@ -26,15 +27,8 @@ const LHS_G2_BYTES: [u8; 128] = [
     0x11, 0xe6, 0xdd, 0x3f, 0x96, 0xe6, 0xce, 0xa2, 0x85, 0x4a, 0x87, 0xd4, 0xda, 0xcc, 0x5e, 0x55,
 ];
 
-#[inline(always)]
-fn fr_to_bn254(env: &Env, fr: &Fr) -> Bn254Fr {
-    Bn254Fr::from_bytes(BytesN::from_array(env, &fr.to_bytes()))
-}
-
-#[inline(always)]
-fn g1_from_point(env: &Env, pt: &G1Point) -> Bn254G1Affine {
-    Bn254G1Affine::from_array(env, &pt.to_bytes())
-}
+/// Uncompressed G1 point at infinity (64 zero bytes), Ethereum order x||y.
+const G1_INFINITY_AFFINE_BYTES: [u8; 64] = [0u8; 64];
 
 #[inline(always)]
 pub fn rhs_g2_affine(env: &Env) -> Bn254G2Affine {
@@ -47,23 +41,33 @@ pub fn lhs_g2_affine(env: &Env) -> Bn254G2Affine {
 }
 
 /// Multi-scalar multiplication on G1: ∑ sᵢ·Cᵢ
+///
+/// Thin shim over the host-native `Bn254::g1_msm` which dispatches to a
+/// Pippenger-style multi-scalar multiplication in a single host boundary
+/// crossing. Zero-scalar terms are filtered out before the host call because
+/// the `Bn254G1Msm` budget cost is charged per input term — skipping them
+/// trims both compute and metered budget. Falls back to the point at infinity
+/// for empty input because the host's `bn254_g1_msm` returns `InvalidInput`
+/// on empty vectors.
 #[inline(always)]
 pub fn g1_msm(env: &Env, coms: &[G1Point], scalars: &[Fr]) -> Result<Bn254G1Affine, &'static str> {
     if coms.len() != scalars.len() {
         return Err("msm len mismatch");
     }
-    let bn = env.crypto().bn254();
-    let mut acc = Bn254G1Affine::from_array(env, &G1Point::infinity().to_bytes());
+    let zero = Fr::zero(env);
+    let mut vp: Vec<Bn254G1Affine> = Vec::new(env);
+    let mut vs: Vec<Bn254Fr> = Vec::new(env);
     for (c, s) in coms.iter().zip(scalars.iter()) {
-        if s.is_zero() {
+        if *s == zero {
             continue;
         }
-        let p = g1_from_point(env, c);
-        let scalar = fr_to_bn254(env, s);
-        let term = bn.g1_mul(&p, &scalar);
-        acc = bn.g1_add(&acc, &term);
+        vp.push_back(c.0.clone());
+        vs.push_back(s.0.clone());
     }
-    Ok(acc)
+    if vp.is_empty() {
+        return Ok(Bn254G1Affine::from_array(env, &G1_INFINITY_AFFINE_BYTES));
+    }
+    Ok(env.crypto().bn254().g1_msm(vp, vs))
 }
 
 /// Pairing product check e(P0, rhs_g2) * e(P1, lhs_g2) == 1
@@ -76,18 +80,4 @@ pub fn pairing_check(env: &Env, p0: &Bn254G1Affine, p1: &Bn254G1Affine) -> bool 
     g2s.push_back(rhs_g2_affine(env));
     g2s.push_back(lhs_g2_affine(env));
     env.crypto().bn254().pairing_check(g1s, g2s)
-}
-
-pub mod helpers {
-    use super::*;
-
-    #[inline(always)]
-    pub fn to_affine(env: &Env, pt: &G1Point) -> Bn254G1Affine {
-        g1_from_point(env, pt)
-    }
-
-    #[inline(always)]
-    pub fn negate(env: &Env, pt: &G1Point) -> Bn254G1Affine {
-        -g1_from_point(env, pt)
-    }
 }

@@ -32,7 +32,7 @@ impl UltraHonkVerifier {
     }
 
     pub fn new(env: &Env, vk_bytes: &Bytes) -> Result<Self, VerifyError> {
-        load_vk_from_bytes(vk_bytes)
+        load_vk_from_bytes(env, vk_bytes)
             .map(|vk| Self::new_with_vk(env, vk))
             .ok_or(VerifyError::InvalidInput("vk parse error"))
     }
@@ -45,11 +45,12 @@ impl UltraHonkVerifier {
     /// Top-level verify
     pub fn verify(
         &self,
+        env: &Env,
         proof_bytes: &Bytes,
         public_inputs_bytes: &Bytes,
     ) -> Result<(), VerifyError> {
         // 1) parse proof
-        let proof = load_proof(proof_bytes);
+        let proof = load_proof(env, proof_bytes);
 
         // 2) sanity on public inputs (length and VK metadata if present)
         if !public_inputs_bytes.len().is_multiple_of(32) {
@@ -81,17 +82,18 @@ impl UltraHonkVerifier {
 
         // 4) Public delta
         t.rel_params.public_inputs_delta = Self::compute_public_input_delta(
+            env,
             public_inputs_bytes,
             &proof.pairing_point_object,
-            t.rel_params.beta,
-            t.rel_params.gamma,
+            &t.rel_params.beta,
+            &t.rel_params.gamma,
             pub_inputs_offset,
             self.vk.circuit_size,
         )
         .map_err(VerifyError::InvalidInput)?;
 
         // 5) Sum-check
-        verify_sumcheck(&proof, &t, &self.vk).map_err(VerifyError::SumcheckFailed)?;
+        verify_sumcheck(env, &proof, &t, &self.vk).map_err(VerifyError::SumcheckFailed)?;
 
         // 6) Shplonk
         verify_shplemini(&self.env, &proof, &self.vk, &t).map_err(VerifyError::ShplonkFailed)?;
@@ -100,39 +102,40 @@ impl UltraHonkVerifier {
     }
 
     fn compute_public_input_delta(
+        env: &Env,
         public_inputs: &Bytes,
         pairing_point_object: &[Fr],
-        beta: Fr,
-        gamma: Fr,
+        beta: &Fr,
+        gamma: &Fr,
         offset: u64,
         n: u64,
     ) -> Result<Fr, &'static str> {
-        let mut numerator = Fr::one();
-        let mut denominator = Fr::one();
+        let mut numerator = Fr::one(env);
+        let mut denominator = Fr::one(env);
 
-        let mut numerator_acc = gamma + beta * Fr::from_u64(n + offset);
-        let mut denominator_acc = gamma - beta * Fr::from_u64(offset + 1);
+        let beta_n = beta * &Fr::from_u64(env, n + offset);
+        let beta_off = beta * &Fr::from_u64(env, offset + 1);
+        let mut numerator_acc = gamma + beta_n;
+        let mut denominator_acc = gamma - &beta_off;
 
         let mut idx = 0u32;
         while idx < public_inputs.len() {
             let mut arr = [0u8; 32];
             public_inputs.slice(idx..idx + 32).copy_into_slice(&mut arr);
-            let public_input = Fr::from_bytes(&arr);
-            numerator = numerator * (numerator_acc + public_input);
-            denominator = denominator * (denominator_acc + public_input);
-            numerator_acc = numerator_acc + beta;
-            denominator_acc = denominator_acc - beta;
+            let public_input = Fr::from_array(env, &arr);
+            numerator = numerator * (&numerator_acc + &public_input);
+            denominator = denominator * (&denominator_acc + &public_input);
+            numerator_acc = &numerator_acc + beta;
+            denominator_acc = &denominator_acc - beta;
             idx += 32;
         }
         for public_input in pairing_point_object {
-            numerator = numerator * (numerator_acc + *public_input);
-            denominator = denominator * (denominator_acc + *public_input);
-            numerator_acc = numerator_acc + beta;
-            denominator_acc = denominator_acc - beta;
+            numerator = &numerator * &(&numerator_acc + public_input);
+            denominator = &denominator * &(&denominator_acc + public_input);
+            numerator_acc = &numerator_acc + beta;
+            denominator_acc = &denominator_acc - beta;
         }
-        let denominator_inv = denominator
-            .inverse()
-            .ok_or("public input delta denom is zero")?;
+        let denominator_inv = denominator.inverse();
         Ok(numerator * denominator_inv)
     }
 }

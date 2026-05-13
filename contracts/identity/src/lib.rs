@@ -40,7 +40,7 @@ impl IdentityContract {
         let verifier = UltraHonkVerifier::new(&env, &vk_bytes).map_err(|_| Error::VkParseError)?;
 
         verifier
-            .verify(&proof_bytes, &public_inputs)
+            .verify(&env, &proof_bytes, &public_inputs)
             .map_err(|_| Error::VerificationFailed)?;
 
         Ok(())
