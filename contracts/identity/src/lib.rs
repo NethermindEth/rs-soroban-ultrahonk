@@ -36,13 +36,13 @@ impl IdentityContract {
             .instance()
             .get(&Self::key_vk())
             .ok_or(Error::VkNotSet)?;
-            
+
         let verifier = UltraHonkVerifier::new(&env, &vk_bytes).map_err(|_| Error::VkParseError)?;
 
         verifier
             .verify(&proof_bytes, &public_inputs)
             .map_err(|_| Error::VerificationFailed)?;
-            
+
         Ok(())
     }
 }
