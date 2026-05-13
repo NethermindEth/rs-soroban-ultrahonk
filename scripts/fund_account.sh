@@ -3,6 +3,16 @@ set -e
 
 source "$(dirname "${BASH_SOURCE[0]}")/config.sh"
 
+# Ensure the stellar CLI knows about the selected network. start_stellar.sh
+# does this for local; for testnet/mainnet we register it lazily here so the
+# remote flows don't depend on the localnet orchestrator.
+if [[ "$STELLAR_NETWORK_NAME" != "local" ]]; then
+  echo -e "${BLUE}Registering network profile '$STELLAR_NETWORK_NAME'...${NC}"
+  stellar network add "$STELLAR_NETWORK_NAME" \
+    --rpc-url "$STELLAR_RPC_URL" \
+    --network-passphrase "$STELLAR_NETWORK_PASSPHRASE" 2>/dev/null || true
+fi
+
 echo -e "${BLUE}Checking/Generating identity for '$STELLAR_SOURCE_ACCOUNT'...${NC}"
 stellar keys generate "$STELLAR_SOURCE_ACCOUNT" 2>/dev/null || true
 

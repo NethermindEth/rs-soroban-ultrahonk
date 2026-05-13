@@ -11,9 +11,28 @@ if [ -f "$ROOT_DIR/.env" ]; then
 fi
 
 # Network Configuration
+# STELLAR_NETWORK_NAME selects the network profile. Recognized values:
+#   local   (default) - Standalone Network in a local Docker container
+#   testnet           - Stellar public testnet
+#   mainnet           - Stellar public network
+# RPC URL and passphrase are auto-filled for known networks but can be
+# overridden by exporting STELLAR_RPC_URL / STELLAR_NETWORK_PASSPHRASE.
 export STELLAR_NETWORK_NAME="${STELLAR_NETWORK_NAME:-local}"
-export STELLAR_RPC_URL="${STELLAR_RPC_URL:-http://localhost:8000/soroban/rpc}"
-export STELLAR_NETWORK_PASSPHRASE="${STELLAR_NETWORK_PASSPHRASE:-Standalone Network ; February 2017}"
+
+case "$STELLAR_NETWORK_NAME" in
+  testnet)
+    export STELLAR_RPC_URL="${STELLAR_RPC_URL:-https://soroban-testnet.stellar.org}"
+    export STELLAR_NETWORK_PASSPHRASE="${STELLAR_NETWORK_PASSPHRASE:-Test SDF Network ; September 2015}"
+    ;;
+  mainnet)
+    export STELLAR_RPC_URL="${STELLAR_RPC_URL:-https://mainnet.sorobanrpc.com}"
+    export STELLAR_NETWORK_PASSPHRASE="${STELLAR_NETWORK_PASSPHRASE:-Public Global Stellar Network ; September 2015}"
+    ;;
+  *)
+    export STELLAR_RPC_URL="${STELLAR_RPC_URL:-http://localhost:8000/soroban/rpc}"
+    export STELLAR_NETWORK_PASSPHRASE="${STELLAR_NETWORK_PASSPHRASE:-Standalone Network ; February 2017}"
+    ;;
+esac
 
 # Deployment & Health Configuration
 if [[ "${GITHUB_ACTIONS:-false}" == "true" ]]; then
