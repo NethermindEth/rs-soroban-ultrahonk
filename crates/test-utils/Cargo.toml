@@ -1,0 +1,9 @@
+[package]
+name = "ultrahonk-test-utils"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+soroban-sdk = { git = "https://github.com/stellar/rs-soroban-sdk.git", rev = "acffbbd45be6a0a551146eebfc268d6f95078246", default-features = false, features = ["testutils"] }
+ultrahonk_soroban_verifier = { path = "../ultrahonk-soroban-verifier" }

@@ -936,6 +936,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 
 [[package]]
+name = "identity"
+version = "0.1.0"
+dependencies = [
+ "soroban-env-host 25.0.0 (git+https://github.com/stellar/rs-soroban-env?rev=cf58d535ab05d02802a5e804a95524650f8c62c7)",
+ "soroban-sdk",
+ "ultrahonk-test-utils",
+ "ultrahonk_soroban_verifier",
+]
+
+[[package]]
 name = "indexmap"
 version = "1.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1949,6 +1959,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40ce102ab67701b8526c123c1bab5cbe42d7040ccfd0f64af1a385808d2f43de"
 
 [[package]]
+name = "ultrahonk-test-utils"
+version = "0.0.0"
+dependencies = [
+ "soroban-sdk",
+ "ultrahonk_soroban_verifier",
+]
+
+[[package]]
 name = "ultrahonk_soroban_verifier"
 version = "0.1.0"
 dependencies = [
@@ -1958,6 +1976,7 @@ dependencies = [
  "lazy_static",
  "once_cell",
  "soroban-sdk",
+ "ultrahonk-test-utils",
 ]
 
 [[package]]

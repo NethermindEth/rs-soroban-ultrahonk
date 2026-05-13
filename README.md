@@ -106,6 +106,12 @@ All Noir circuits live under `/circuits/`. Each circuit keeps its source files a
 
 See [`circuits/README.md`](circuits/README.md) for the circuit layout, rebuild commands, and how to add a new circuit.
 
+## Circuits
+
+All Noir circuits live under `/circuits/`. Each circuit keeps its source files and generated artifacts together, with build outputs under `circuits/<name>/target/`.
+
+See [`circuits/README.md`](circuits/README.md) for the circuit layout, rebuild commands, and how to add a new circuit.
+
 ## Advanced usage
 
 ### Use the JS helper script
@@ -130,6 +136,11 @@ This contract does not enforce access control:
 - `verify_proof` always uses the stored VK set at deploy.
 
 ## Tests
+
+> **Note:** Integration tests include circuit artifacts (VK, proof, public inputs) via `include_bytes!`. You must build the circuits first before running tests:
+> ```bash
+> just build-circuits
+> ```
 
 Run all unit and integration tests across the Cargo workspace (including `rs-soroban-ultrahonk` and `tornado_classic`):
 

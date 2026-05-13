@@ -119,6 +119,25 @@ build_circuit() {
     --output_path target \
     --output_format bytes_and_fields
 
+  if [[ "${name}" == "tornado" && "${GENERATE_PROVER:-1}" != "0" ]]; then
+    echo "=== Generating E2E artifacts for tornado ==="
+    (
+      cd "${REPO_ROOT}"
+      TORNADO_EMPTY_TREE=1 cargo run \
+        --example populate_publics \
+        --manifest-path contracts/tornado_classic/contracts/Cargo.toml \
+        --features std
+    )
+    "${nargo_bin}" execute
+    "${bb_bin}" prove \
+      --scheme ultra_honk \
+      --oracle_hash keccak \
+      --bytecode_path "${json}" \
+      --witness_path "${gz}" \
+      --output_path target/e2e \
+      --output_format bytes_and_fields
+  fi
+
   if [[ -d target/vk_fields.json && -f target/vk_fields.json/vk_fields.json ]]; then
     mv target/vk_fields.json/vk_fields.json target/vk_fields.json.tmp
     rmdir target/vk_fields.json
