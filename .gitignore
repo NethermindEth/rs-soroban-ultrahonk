@@ -21,6 +21,7 @@ target
 #.idea/
 
 .contract_id
+.identity_contract_id
 test_snapshots
 Cargo.lock
 scripts/measure_ultrahonk_costs/node_modules/
