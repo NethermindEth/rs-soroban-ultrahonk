@@ -1,0 +1,17 @@
+{
+  "name": "invoke-identity",
+  "version": "1.0.0",
+  "description": "Client for invoking the Identity contract on Soroban",
+  "scripts": {
+    "invoke": "ts-node invoke_identity.ts"
+  },
+  "dependencies": {
+    "argparse": "^2.0.1"
+  },
+  "devDependencies": {
+    "@types/argparse": "^2.0.10",
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.0.0"
+  }
+}
