@@ -182,14 +182,14 @@ binop_fr!(Mul, mul, fr_mul, *);
 impl Neg for Fr {
     type Output = Fr;
     fn neg(self) -> Fr {
-        Fr::zero(&self.0.env()) - &self
+        Fr::zero(self.0.env()) - &self
     }
 }
 
 impl Neg for &Fr {
     type Output = Fr;
     fn neg(self) -> Fr {
-        Fr::zero(&self.0.env()) - self
+        Fr::zero(self.0.env()) - self
     }
 }
 
@@ -242,15 +242,14 @@ mod tests {
         batch_inverse(&inputs, &mut inverses).unwrap();
 
         let expected_inv = Fr::from_u64(&env, 7).inverse();
-        for i in 0..3 {
-            assert_eq!(inverses[i], expected_inv);
+        for inverse in inverses {
+            assert_eq!(inverse, expected_inv);
         }
     }
 
     #[test]
     fn hex_round_trip() {
         let env = Env::default();
-        let hex_parts = [0, 0, 0, 0x1234567890abcdefu64];
         let fr = Fr(Bn254Fr::from_bytes(bytesn!(
             &env,
             0x0000000000000000000000000000000000000000000000001234567890abcdef

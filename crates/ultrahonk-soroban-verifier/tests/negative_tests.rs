@@ -72,7 +72,7 @@ fn mutated_vk_simple_circuit_fails() {
         let pi = Bytes::from_slice(&env, &f.public_inputs);
 
         match UltraHonkVerifier::new(&env, &vk) {
-            Err(_) => return, // VK parse rejected — good
+            Err(_) => (), // VK parse rejected — good
             Ok(v) => {
                 assert!(
                     v.verify(&env, &proof, &pi).is_err(),
@@ -107,7 +107,7 @@ fn mutated_vk_fib_chain_fails() {
         let pi = Bytes::from_slice(&env, &f.public_inputs);
 
         match UltraHonkVerifier::new(&env, &vk) {
-            Err(_) => return,
+            Err(_) => (),
             Ok(v) => {
                 assert!(
                     v.verify(&env, &proof, &pi).is_err(),

@@ -1737,7 +1737,6 @@ dependencies = [
 name = "ultrahonk_soroban_verifier"
 version = "0.1.0"
 dependencies = [
- "hex",
  "soroban-sdk",
  "ultrahonk-test-utils",
 ]
