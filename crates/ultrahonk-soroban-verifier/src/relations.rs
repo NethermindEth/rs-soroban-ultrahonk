@@ -479,8 +479,10 @@ mod tests {
         );
 
         assert_eq!(
-            hex::encode(result.to_bytes()),
-            "1ec606befa857100f90267ac1dc687413b93e8586fdbb4682dfda24b864515aa"
+            result.to_bytes(),
+            crate::debug::hex_to_bytes(
+                "1ec606befa857100f90267ac1dc687413b93e8586fdbb4682dfda24b864515aa"
+            )
         );
     }
 }

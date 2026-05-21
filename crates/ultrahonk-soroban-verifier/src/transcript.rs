@@ -44,7 +44,7 @@ fn split_challenge_from_be32(env: &Env, challenge_bytes: &[u8; 32]) -> (Fr, Fr) 
 
 fn split_challenge(challenge: &Fr) -> (Fr, Fr) {
     let env = challenge.0.env();
-    split_challenge_from_be32(&env, &challenge.to_bytes())
+    split_challenge_from_be32(env, &challenge.to_bytes())
 }
 
 #[inline(always)]
@@ -290,15 +290,21 @@ pub fn generate_transcript(
         generate_shplonk_z_challenge(env, proof, previous_challenge);
 
     trace!("===== TRANSCRIPT PARAMETERS =====");
-    trace!("eta = 0x{}", hex::encode(rp.eta.to_bytes()));
-    trace!("eta_two = 0x{}", hex::encode(rp.eta_two.to_bytes()));
-    trace!("eta_three = 0x{}", hex::encode(rp.eta_three.to_bytes()));
-    trace!("beta = 0x{}", hex::encode(rp.beta.to_bytes()));
-    trace!("gamma = 0x{}", hex::encode(rp.gamma.to_bytes()));
-    trace!("rho = 0x{}", hex::encode(rho.to_bytes()));
-    trace!("gemini_r = 0x{}", hex::encode(gemini_r.to_bytes()));
-    trace!("shplonk_nu = 0x{}", hex::encode(shplonk_nu.to_bytes()));
-    trace!("shplonk_z = 0x{}", hex::encode(shplonk_z.to_bytes()));
+    trace!("eta = 0x{}", crate::debug::Hex(&rp.eta.to_bytes()));
+    trace!("eta_two = 0x{}", crate::debug::Hex(&rp.eta_two.to_bytes()));
+    trace!(
+        "eta_three = 0x{}",
+        crate::debug::Hex(&rp.eta_three.to_bytes())
+    );
+    trace!("beta = 0x{}", crate::debug::Hex(&rp.beta.to_bytes()));
+    trace!("gamma = 0x{}", crate::debug::Hex(&rp.gamma.to_bytes()));
+    trace!("rho = 0x{}", crate::debug::Hex(&rho.to_bytes()));
+    trace!("gemini_r = 0x{}", crate::debug::Hex(&gemini_r.to_bytes()));
+    trace!(
+        "shplonk_nu = 0x{}",
+        crate::debug::Hex(&shplonk_nu.to_bytes())
+    );
+    trace!("shplonk_z = 0x{}", crate::debug::Hex(&shplonk_z.to_bytes()));
     trace!("circuit_size = {}", circuit_size);
     trace!("public_inputs_total = {}", public_inputs_size);
     trace!("public_inputs_offset = {}", pub_inputs_offset);
@@ -344,24 +350,34 @@ mod tests {
         );
 
         assert_eq!(
-            hex::encode(t.rel_params.eta.to_bytes()),
-            "0000000000000000000000000000000085cff885ac2961fd2caf69da4ab04a55"
+            t.rel_params.eta.to_bytes(),
+            crate::debug::hex_to_bytes(
+                "0000000000000000000000000000000085cff885ac2961fd2caf69da4ab04a55"
+            )
         );
         assert_eq!(
-            hex::encode(t.rel_params.beta.to_bytes()),
-            "00000000000000000000000000000000cf2d1a0f78861f5dfc916c1550073a26"
+            t.rel_params.beta.to_bytes(),
+            crate::debug::hex_to_bytes(
+                "00000000000000000000000000000000cf2d1a0f78861f5dfc916c1550073a26"
+            )
         );
         assert_eq!(
-            hex::encode(t.rel_params.gamma.to_bytes()),
-            "000000000000000000000000000000000b9a9dc0b29d2edaa5de654ffd600900"
+            t.rel_params.gamma.to_bytes(),
+            crate::debug::hex_to_bytes(
+                "000000000000000000000000000000000b9a9dc0b29d2edaa5de654ffd600900"
+            )
         );
         assert_eq!(
-            hex::encode(t.rho.to_bytes()),
-            "00000000000000000000000000000000ddc594911e07b3b91b1afc817c04d331"
+            t.rho.to_bytes(),
+            crate::debug::hex_to_bytes(
+                "00000000000000000000000000000000ddc594911e07b3b91b1afc817c04d331"
+            )
         );
         assert_eq!(
-            hex::encode(t.shplonk_z.to_bytes()),
-            "000000000000000000000000000000001c9e9d4cde5bde269eed51b980ab19fe"
+            t.shplonk_z.to_bytes(),
+            crate::debug::hex_to_bytes(
+                "000000000000000000000000000000001c9e9d4cde5bde269eed51b980ab19fe"
+            )
         );
     }
 }
