@@ -13,4 +13,4 @@ ultrahonk_soroban_verifier = { path = "../../crates/ultrahonk-soroban-verifier",
 [dev-dependencies]
 # Enable test helpers for local unit tests
 soroban-sdk = { workspace = true, features = ["testutils", "alloc"] }
-soroban-env-host = { git = "https://github.com/stellar/rs-soroban-env", rev = "cf58d535ab05d02802a5e804a95524650f8c62c7" }
+soroban-env-host = "26.1.3"

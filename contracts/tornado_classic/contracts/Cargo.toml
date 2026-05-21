@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 rs-soroban-ultrahonk = { path = "../../rs-soroban-ultrahonk" }
 soroban-sdk = { workspace = true, features = ["alloc"] }
-soroban-poseidon = { git = "https://github.com/stellar/rs-soroban-poseidon", rev = "c1e8cdb6b59817a315b329bdfd08564231b0e424" }
+soroban-poseidon = "26.0.0"
 ultrahonk_soroban_verifier = { path = "../../../crates/ultrahonk-soroban-verifier", default-features = false }
 
 [dev-dependencies]
