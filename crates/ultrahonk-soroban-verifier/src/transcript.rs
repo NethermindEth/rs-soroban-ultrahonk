@@ -1,6 +1,5 @@
 //! Fiat–Shamir transcript for UltraHonk
 
-use crate::field::ArkFr;
 use crate::trace;
 use crate::{
     field::Fr,
@@ -9,7 +8,7 @@ use crate::{
         G1Point, Proof, RelationParameters, Transcript, CONST_PROOF_SIZE_LOG_N, NUMBER_OF_ALPHAS,
     },
 };
-use soroban_sdk::{Bytes, Env};
+use soroban_sdk::{crypto::bn254::Bn254Fr, Bytes, Env};
 
 #[inline]
 fn push_coord_halves(buf: &mut Bytes, coord: &[u8]) {
@@ -50,7 +49,7 @@ fn split_challenge(challenge: &Fr) -> (Fr, Fr) {
 
 #[inline(always)]
 fn hash_to_fr(bytes: &Bytes) -> Fr {
-    Fr(ArkFr::from_bytes(hash32(bytes)))
+    Fr(Bn254Fr::from_bytes(hash32(bytes)))
 }
 
 fn u64_to_be32(x: u64) -> [u8; 32] {
