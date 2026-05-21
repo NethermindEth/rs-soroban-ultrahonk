@@ -1,21 +1,19 @@
-pub use soroban_sdk::crypto::bn254::Bn254Fr as ArkFr;
-
 use core::array::repeat;
 use core::ops::{Add, Mul, Neg, Sub};
-use soroban_sdk::{BytesN, Env, U256};
+use soroban_sdk::{crypto::bn254::Bn254Fr, BytesN, Env, U256};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Fr(pub ArkFr);
+pub struct Fr(pub Bn254Fr);
 
 impl Fr {
     #[inline(always)]
     pub fn zero(env: &Env) -> Self {
-        Self(ArkFr::from_u256(U256::from_u32(env, 0)))
+        Self(Bn254Fr::from_u256(U256::from_u32(env, 0)))
     }
 
     #[inline(always)]
     pub fn one(env: &Env) -> Self {
-        Self(ArkFr::from_u256(U256::from_u32(env, 1)))
+        Self(Bn254Fr::from_u256(U256::from_u32(env, 1)))
     }
 
     #[inline(always)]
@@ -25,17 +23,17 @@ impl Fr {
 
     #[inline(always)]
     pub fn from_u64(env: &Env, x: u64) -> Self {
-        Self(ArkFr::from_u256(U256::from_u128(env, x as u128)))
+        Self(Bn254Fr::from_u256(U256::from_u128(env, x as u128)))
     }
 
     #[inline(always)]
     pub fn from_array(env: &Env, value: &[u8; 32]) -> Self {
-        Self(ArkFr::from_bytes(BytesN::from_array(env, value)))
+        Self(Bn254Fr::from_bytes(BytesN::from_array(env, value)))
     }
 
     #[inline(always)]
     pub fn from_parts(env: &Env, lolo: u64, lohi: u64, hilo: u64, hihi: u64) -> Self {
-        Self(ArkFr::from_u256(U256::from_parts(
+        Self(Bn254Fr::from_u256(U256::from_parts(
             env, lolo, lohi, hilo, hihi,
         )))
     }
