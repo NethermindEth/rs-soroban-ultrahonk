@@ -70,7 +70,7 @@ impl UltraHonkVerifier {
 
         // 3) Fiat–Shamir transcript
         let pis_total = provided + PAIRING_POINTS_SIZE as u64;
-        let pub_inputs_offset = 1;
+        let pub_inputs_offset = self.vk.pub_inputs_offset;
         let mut t = generate_transcript(
             &self.env,
             &proof,

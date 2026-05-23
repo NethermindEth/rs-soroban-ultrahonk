@@ -109,6 +109,7 @@ pub struct VerificationKey {
     pub circuit_size: u64,
     pub log_circuit_size: u64,
     pub public_inputs_size: u64,
+    pub pub_inputs_offset: u64,
     // Selectors and wire commitments:
     pub qm: G1Point,
     pub qc: G1Point,
