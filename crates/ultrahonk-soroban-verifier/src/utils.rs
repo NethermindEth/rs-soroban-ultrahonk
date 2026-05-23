@@ -168,7 +168,7 @@ pub fn load_vk_from_bytes(env: &Env, bytes: &Bytes) -> Option<VerificationKey> {
     let circuit_size = read_u64(bytes, &mut idx);
     let log_circuit_size = read_u64(bytes, &mut idx);
     let public_inputs_size = read_u64(bytes, &mut idx);
-    let _pub_inputs_offset = read_u64(bytes, &mut idx);
+    let pub_inputs_offset = read_u64(bytes, &mut idx);
 
     // One contiguous read for all G1 points (27 × 64 bytes), then parse in layout order.
     let points_bytes = read_bytes::<POINT_BLOB_LEN>(bytes, &mut idx);
@@ -186,6 +186,7 @@ pub fn load_vk_from_bytes(env: &Env, bytes: &Bytes) -> Option<VerificationKey> {
         circuit_size,
         log_circuit_size,
         public_inputs_size,
+        pub_inputs_offset,
         qm: it.next()?,
         qc: it.next()?,
         ql: it.next()?,
