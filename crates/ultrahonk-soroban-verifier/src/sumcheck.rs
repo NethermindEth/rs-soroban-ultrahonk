@@ -1,4 +1,11 @@
-//! Sum-check verifier
+//! Sumcheck verifier for the multivariate polynomial identity.
+//!
+//! Verifies that the claimed sumcheck univariates and evaluations satisfy the
+//! polynomial identity derived from all 26 subrelations.  Uses barycentric
+//! evaluation with precomputed Lagrange denominators and batch inversion.
+//!
+//! BB reference (v0.82.2): `sumcheck/sumcheck.hpp::SumcheckVerifier::verify`
+//!                        `sumcheck/sumcheck_round.hpp::SumcheckVerifierRound`
 
 use core::array;
 
@@ -52,16 +59,23 @@ const BARY_BYTES: [[u8; 32]; BATCHED_RELATION_PARTIAL_LENGTH] = [
     ],
 ];
 
-/// Check if the sum of two univariates equals the target value
+/// Verify that the round univariate satisfies `S(0) + S(1) == target`.
+///
+/// BB: `sumcheck/sumcheck_round.hpp::SumcheckVerifierRound::check_sum`
 #[inline(always)]
 fn check_sum(round_univariate: &[Fr], round_target: Fr) -> bool {
     let total_sum = &round_univariate[0] + &round_univariate[1];
     total_sum == round_target
 }
 
-/// Calculate next target value for the sum-check using batch inversion.
-/// Instead of 8 individual inversions per round, uses Montgomery's trick
-/// to compute all 8 with a single inversion + 21 multiplications.
+/// Evaluate the round univariate at the challenge point using barycentric interpolation.
+///
+/// Computes `B(z) · Σᵢ (yᵢ / (dᵢ · (z − xᵢ)))` where `B(z) = ∏(z − xᵢ)` and
+/// `dᵢ` are the precomputed Lagrange denominators (`BARY_BYTES`).  Uses
+/// Montgomery's batch-inversion trick (1 field inverse instead of 8).
+///
+/// BB: `sumcheck/sumcheck_round.hpp::SumcheckVerifierRound::compute_next_target_sum`
+///      (via `Univariate::evaluate` in `polynomials/univariate.hpp`)
 #[inline(always)]
 fn compute_next_target_sum(
     round_univariate: &[Fr],
@@ -95,6 +109,12 @@ fn compute_next_target_sum(
     Ok(b_poly * acc)
 }
 
+/// Update the gate-separator polynomial partial evaluation.
+///
+/// `pow_new = pow_old · (1 + uᵢ · (βᵢ − 1))` where `uᵢ` is the sumcheck round
+/// challenge and `βᵢ` is the gate challenge for round `i`.
+///
+/// BB: `polynomials/gate_separator.hpp::GateSeparatorPolynomial::partially_evaluate`
 #[inline(always)]
 fn partially_evaluate_pow(
     one: &Fr,
@@ -105,6 +125,17 @@ fn partially_evaluate_pow(
     pow_partial_evaluation * (one + round_challenge * (gate_challenge - one))
 }
 
+/// Run the full sumcheck verification protocol.
+///
+/// For each round `0 .. log_n`:
+/// 1. `check_sum` — verify `Sᵢ(0) + Sᵢ(1) == target`.
+/// 2. `compute_next_target_sum` — barycentric-evaluate `Sᵢ` at challenge `uᵢ`.
+/// 3. `partially_evaluate_pow` — update the gate-separator accumulator.
+///
+/// After all rounds, evaluate all 26 subrelations at the claimed evaluation
+/// point and compare against the final round target.
+///
+/// BB: `sumcheck/sumcheck.hpp::SumcheckVerifier::verify`
 pub fn verify_sumcheck(
     env: &Env,
     proof: &crate::types::Proof,
