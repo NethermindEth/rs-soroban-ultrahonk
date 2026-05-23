@@ -1,4 +1,13 @@
-//! UltraHonk verifier
+//! Top-level UltraHonk verifier orchestration.
+//!
+//! Implements the verifier flow that BB splits across `ultra_verifier.cpp`,
+//! `oink_verifier.cpp`, and `decider_verifier.cpp`.  The Rust code inlines the
+//! Oink and Decider steps into a single `verify` method.
+//!
+//! BB reference (v0.82.2):
+//!   - `ultra_honk/ultra_verifier.cpp::UltraVerifier_::verify_proof`
+//!   - `ultra_honk/oink_verifier.cpp::OinkVerifier::verify`
+//!   - `ultra_honk/decider_verifier.cpp::DeciderVerifier_::verify`
 
 use crate::{
     field::Fr,
@@ -42,7 +51,17 @@ impl UltraHonkVerifier {
         &self.vk
     }
 
-    /// Top-level verify
+    /// Verify an UltraHonk proof against the loaded VK.
+    ///
+    /// Steps (matching BB verifier flow):
+    /// 1. Parse proof bytes.
+    /// 2. Validate public-input length against VK metadata.
+    /// 3. Generate Fiat–Shamir challenges (Oink rounds).
+    /// 4. Compute `public_inputs_delta` (grand-product permutation argument).
+    /// 5. Run sumcheck verification.
+    /// 6. Run Shplemini batch-opening (Gemini + Shplonk + KZG pairing check).
+    ///
+    /// BB: `ultra_verifier.cpp::UltraVerifier_::verify_proof`
     pub fn verify(
         &self,
         env: &Env,
@@ -101,6 +120,16 @@ impl UltraHonkVerifier {
         Ok(())
     }
 
+    /// Compute the public-input delta factor for the permutation grand-product argument.
+    ///
+    /// Formula (matching BB):
+    ///   numerator   = ∏ᵢ (γ + xᵢ + β·(n + i + offset))
+    ///   denominator = ∏ᵢ (γ + xᵢ − β·(1 + i + offset))
+    ///   delta       = numerator · denominator⁻¹
+    ///
+    /// The pairing-point object values are appended after the user-supplied public inputs.
+    ///
+    /// BB: `honk/library/grand_product_delta.hpp::compute_public_input_delta`
     fn compute_public_input_delta(
         env: &Env,
         public_inputs: &Bytes,

@@ -1,3 +1,10 @@
+//! Core type definitions for the UltraHonk verifier.
+//!
+//! `VerificationKey`, `Proof`, `Transcript`, and `RelationParameters` layouts
+//! are derived from Barretenberg `UltraFlavor` v0.82.2.
+//!
+//! BB reference: `barretenberg/flavor/ultra_flavor.hpp`
+
 use crate::field::Fr;
 use soroban_sdk::crypto::bn254::Bn254G1Affine;
 use soroban_sdk::Env;
@@ -11,7 +18,13 @@ pub const NUMBER_TO_BE_SHIFTED: usize = 5;
 pub const PAIRING_POINTS_SIZE: usize = 16;
 pub const NUMBER_OF_ALPHAS: usize = NUMBER_OF_SUBRELATIONS - 1;
 
-/// Wire indices for the Ultra Honk protocol.
+/// Wire indices for the UltraHonk protocol.
+///
+/// Maps every polynomial entity (selectors, sigmas, IDs, tables, witness wires,
+/// shifted wires) to its position in the `AllEntities` tuple.  Indices 0–34 are
+/// unshifted; 35–39 are the shifted counterparts of `Wl`, `Wr`, `Wo`, `W4`, `ZPerm`.
+///
+/// BB: `flavor/ultra_flavor.hpp::AllEntities` / `CommitmentLabels`
 #[derive(Copy, Clone, Debug)]
 pub enum Wire {
     Qm = 0,
@@ -62,7 +75,11 @@ impl Wire {
     }
 }
 
-/// A G1 point in affine coordinates.
+/// A BN254 G1 point in affine coordinates.
+///
+/// Thin wrapper around the Soroban host type `Bn254G1Affine`.
+///
+/// BB: `curve::BN254::AffineElement`
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct G1Point(pub Bn254G1Affine);
 
@@ -103,7 +120,13 @@ impl G1Point {
     }
 }
 
-/// The verification key structure
+/// Verification key for UltraHonk circuits.
+///
+/// Header: 4 big-endian `u64` fields (`circuit_size`, `log_circuit_size`,
+/// `public_inputs_size`, `pub_inputs_offset`) followed by 27 G1 commitments
+/// (64 bytes each) in `PrecomputedEntities` order.
+///
+/// BB: `flavor/ultra_flavor.hpp::VerificationKey_`
 #[derive(Clone, Debug)]
 pub struct VerificationKey {
     pub circuit_size: u64,
@@ -143,7 +166,18 @@ pub struct VerificationKey {
     pub lagrange_last: G1Point,
 }
 
-/// The Proof structure
+/// UltraHonk proof structure.
+///
+/// Fixed-size layout (14 592 bytes = `PROOF_BYTES`):
+/// - 16 Fr elements (pairing point object)
+/// - 8 G1 commitments (wire + lookup)
+/// - 28 × 8 Fr elements (sumcheck univariates)
+/// - 40 Fr elements (sumcheck evaluations)
+/// - 27 G1 commitments (Gemini fold)
+/// - 28 Fr elements (Gemini fold evaluations)
+/// - 2 G1 commitments (Shplonk Q + KZG quotient)
+///
+/// BB: `flavor/ultra_flavor.hpp::Proof`
 #[derive(Clone, Debug)]
 pub struct Proof {
     // Pairing point object (16 Fr elements)
@@ -169,7 +203,9 @@ pub struct Proof {
     pub kzg_quotient: G1Point,
 }
 
-/// Relation parameters (η, η₂, η₃, β, γ, public_inputs_delta).
+/// Relation parameters used by all subrelation accumulators.
+///
+/// BB: `relations/relation_parameters.hpp::RelationParameters`
 #[derive(Clone, Debug)]
 pub struct RelationParameters {
     pub eta: Fr,
@@ -180,7 +216,10 @@ pub struct RelationParameters {
     pub public_inputs_delta: Fr,
 }
 
-/// The transcript holding all Fiat–Shamir challenges.
+/// Container for all Fiat–Shamir challenges derived by the transcript.
+///
+/// BB: Fields are scattered across `DeciderVerificationKey_` and the
+///      transcript itself in the C++ codebase.
 #[derive(Clone, Debug)]
 pub struct Transcript {
     pub rel_params: RelationParameters,

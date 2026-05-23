@@ -1,4 +1,12 @@
-//! Utilities for loading Proof and VerificationKey, plus byte↔field/point conversion.
+//! Proof and verification-key deserialization.
+//!
+//! Handles the fixed-size byte layouts emitted by the Barretenberg native prover.
+//! G1 coordinates use the BN254 base-field limb split (low 136 bits + high ≤118 bits).
+//!
+//! BB reference (v0.82.2):
+//!   - `honk/proof_system/types/proof.hpp`
+//!   - `flavor/ultra_flavor.hpp::Proof`
+//!   - `flavor/ultra_flavor.hpp::VerificationKey_`
 
 use crate::field::Fr;
 use crate::types::{
@@ -30,7 +38,12 @@ const _: () = assert!(
         == PROOF_BYTES
 );
 
-/// Split a 32-byte big-endian field element into (low136, high) limbs.
+/// Split a 32-byte big-endian field element into (low136, high≤118) limbs.
+///
+/// This is the inverse of `combine_limbs`.  Used when serialising G1 coordinates
+/// into the transcript buffer.
+///
+/// BB: `field_conversion::calc_num_bn254_frs` + native serialization
 #[inline]
 pub fn coord_to_halves_be(coord: &[u8]) -> ([u8; 32], [u8; 32]) {
     let mut low = [0u8; 32];
@@ -82,7 +95,13 @@ fn g1_from_proof_blob_at(env: &Env, blob: &[u8], point_idx: usize) -> G1Point {
     g1_from_proof_chunk128(env, blob[o..o + 128].try_into().expect("g1_128"))
 }
 
-/// Load a Proof from a byte array.
+/// Deserialize a `Proof` from its canonical byte representation.
+///
+/// The layout is fixed and derived from `ultra_flavor.hpp::PROOF_LENGTH_WITHOUT_PUB_INPUTS`.
+/// All field elements are big-endian 32-byte scalars; G1 points use the
+/// `(x_lo, x_hi, y_lo, y_hi)` limb layout (128 bytes each).
+///
+/// BB: `flavor/ultra_flavor.hpp::Proof` (implicit in `BaseTranscript` deserialization)
 ///
 /// Note (bb v0.87.0): G1 coordinates are encoded as two limbs per coordinate
 /// using the (lo136, hi<=118) split and stored in the order (x_lo, x_hi, y_lo, y_hi).
@@ -150,7 +169,12 @@ pub fn load_proof(env: &Env, proof_bytes: &Bytes) -> Proof {
     }
 }
 
-/// Load a VerificationKey.
+/// Deserialize a `VerificationKey` from its canonical byte representation.
+///
+/// Layout: 4 big-endian `u64` header fields + 27 G1 commitments (64 bytes each).
+/// The point order matches `PrecomputedEntities` in BB.
+///
+/// BB: `flavor/ultra_flavor.hpp::VerificationKey_`
 pub fn load_vk_from_bytes(env: &Env, bytes: &Bytes) -> Option<VerificationKey> {
     const HEADER_WORDS: usize = 4;
     const NUM_POINTS: usize = 27;

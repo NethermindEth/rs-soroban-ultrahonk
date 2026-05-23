@@ -1,4 +1,12 @@
-//! Shplemini batch-opening verifier for BN254
+//! Shplemini batch-opening verifier (Gemini + Shplonk + KZG) for BN254.
+//!
+//! Verifies the polynomial commitment scheme opening by constructing a single
+//! MSM that accumulates unshifted/shifted claims, Gemini fold evaluations, and
+//! the constant term, then performs a BN254 pairing check.
+//!
+//! BB reference (v0.82.2):
+//!   - `commitment_schemes/shplonk/shplemini.hpp::ShpleminiVerifier_::compute_batch_opening_claim`
+//!   - `commitment_schemes/kzg/kzg.hpp::KZG::reduce_verify_batch_opening_claim`
 
 use crate::ec::{g1_msm, pairing_check};
 use crate::field::{batch_inverse, Fr};
@@ -11,7 +19,22 @@ use core::array::repeat;
 use core::ops::Neg;
 use soroban_sdk::Env;
 
-/// Shplemini verification
+/// Verify the Shplemini batch-opening claim.
+///
+/// High-level flow (matching BB):
+/// 1. Compute powers of Gemini evaluation challenge `r^{2^i}`.
+/// 2. Batch-invert all Shplonk/Gemini denominators (`z ± r^{2^j}`, fold-round
+///    denominators, and `r` itself).
+/// 3. Compute Shplonk scalar weights for unshifted and shifted polynomial batches.
+/// 4. Accumulate batched multilinear evaluation `∑ ρⁱ·evalᵢ`.
+/// 5. Load VK + proof commitments into MSM arrays (shifted scalars merged into
+///    unshifted counterparts to match BB's `remove_repeated_commitments`).
+/// 6. Reconstruct positive Gemini fold evaluations `Aⱼ(r^{2^j})`.
+/// 7. Accumulate constant term and fold-round MSM scalars.
+/// 8. Add generator (with constant-term scalar) and KZG quotient (with scalar `z`).
+/// 9. Single MSM + pairing check.
+///
+/// BB: `commitment_schemes/shplonk/shplemini.hpp::ShpleminiVerifier_::compute_batch_opening_claim`
 pub fn verify_shplemini(
     env: &Env,
     proof: &Proof,
