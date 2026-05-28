@@ -6,7 +6,7 @@
 use crate::field::Fr;
 use crate::types::{RelationParameters, Wire, NUMBER_OF_SUBRELATIONS};
 use core::ops::Index;
-use soroban_sdk::Env;
+use soroban_sdk::{bytesn, crypto::bn254::Bn254Fr, Env};
 
 impl Index<Wire> for [Fr] {
     type Output = Fr;
@@ -133,13 +133,9 @@ fn accumulate_log_derivative_lookup_relation(
 
 /// Accumulate the four range-check subrelations (indices 6..9).
 fn accumulate_delta_range_relation(env: &Env, p: &[Fr], evals: &mut [Fr], domain_sep: &Fr) {
-    let zero = Fr::zero(env);
-    let one = Fr::from_u64(env, 1);
-    let two = Fr::from_u64(env, 2);
-    let three = Fr::from_u64(env, 3);
-    let minus_one = &zero - &one;
-    let minus_two = &zero - &two;
-    let minus_three = &zero - &three;
+    let minus_one = Fr::minus_one(env);
+    let minus_two = Fr::minus_two(env);
+    let minus_three = Fr::minus_three(env);
 
     let wr = &p[Wire::Wr];
     let wl = &p[Wire::Wl];
@@ -226,7 +222,10 @@ fn accumulate_auxillary_relation(
     domain_sep: &Fr,
 ) {
     let one = Fr::one(env);
-    let limb_size = Fr::from_parts(env, 0, 0, 0x10, 0);
+    let limb_size = Fr(Bn254Fr::from_bytes(bytesn!(
+        &env,
+        0x0000000000000000000000000000000000000000000000100000000000000000
+    )));
     let sublimb_shift = Fr::from_u64(env, 1 << 14);
 
     let wl = &p[Wire::Wl];

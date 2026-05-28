@@ -1,6 +1,6 @@
 use core::array::repeat;
 use core::ops::{Add, Mul, Neg, Sub};
-use soroban_sdk::{crypto::bn254::Bn254Fr, BytesN, Env, U256};
+use soroban_sdk::{bytesn, crypto::bn254::Bn254Fr, BytesN, Env, U256};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Fr(pub Bn254Fr);
@@ -31,57 +31,59 @@ impl Fr {
         Self(Bn254Fr::from_bytes(BytesN::from_array(env, value)))
     }
 
-    #[inline(always)]
-    pub fn from_parts(env: &Env, lolo: u64, lohi: u64, hilo: u64, hihi: u64) -> Self {
-        Self(Bn254Fr::from_u256(U256::from_parts(
-            env, lolo, lohi, hilo, hihi,
-        )))
-    }
-
     /// Precomputed NEG_HALF = (p - 1)/2 in BN254 scalar field.
     #[inline(always)]
     pub fn neg_half(env: &Env) -> Self {
-        Self::from_parts(
-            env,
-            0x183227397098d014,
-            0xdc2822db40c0ac2e,
-            0x9419f4243cdcb848,
-            0xa1f0fac9f8000000,
-        )
+        Self(Bn254Fr::from_bytes(bytesn!(
+            &env,
+            0x183227397098d014dc2822db40c0ac2e9419f4243cdcb848a1f0fac9f8000000
+        )))
+    }
+
+    #[inline(always)]
+    pub fn minus_one(env: &Env) -> Self {
+        Self(Bn254Fr::from_bytes(bytesn!(
+            &env,
+            0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000000
+        )))
+    }
+
+    #[inline(always)]
+    pub fn minus_two(env: &Env) -> Self {
+        Self(Bn254Fr::from_bytes(bytesn!(
+            &env,
+            0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593efffffff
+        )))
+    }
+
+    #[inline(always)]
+    pub fn minus_three(env: &Env) -> Self {
+        Self(Bn254Fr::from_bytes(bytesn!(
+            &env,
+            0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593effffffe
+        )))
     }
 
     /// Internal matrix diagonal values for Poseidon hash.
     #[inline(always)]
     pub fn internal_matrix_diagonal(env: &Env) -> [Self; 4] {
         [
-            Self::from_parts(
-                env,
-                0x10dc6e9c006ea38b,
-                0x04b1e03b4bd9490c,
-                0x0d03f98929ca1d7f,
-                0xb56821fd19d3b6e7,
-            ),
-            Self::from_parts(
-                env,
-                0x0c28145b6a44df3e,
-                0x0149b3d0a30b3bb5,
-                0x99df9756d4dd9b84,
-                0xa86b38cfb45a740b,
-            ),
-            Self::from_parts(
-                env,
-                0x00544b8338791518,
-                0xb2c7645a50392798,
-                0xb21f75bb60e35961,
-                0x70067d00141cac15,
-            ),
-            Self::from_parts(
-                env,
-                0x222c01175718386f,
-                0x2e2e82eb122789e3,
-                0x52e105a3b8fa8526,
-                0x13bc534433ee428b,
-            ),
+            Self(Bn254Fr::from_bytes(bytesn!(
+                &env,
+                0x10dc6e9c006ea38b04b1e03b4bd9490c0d03f98929ca1d7fb56821fd19d3b6e7
+            ))),
+            Self(Bn254Fr::from_bytes(bytesn!(
+                &env,
+                0x0c28145b6a44df3e0149b3d0a30b3bb599df9756d4dd9b84a86b38cfb45a740b
+            ))),
+            Self(Bn254Fr::from_bytes(bytesn!(
+                &env,
+                0x00544b8338791518b2c7645a50392798b21f75bb60e3596170067d00141cac15
+            ))),
+            Self(Bn254Fr::from_bytes(bytesn!(
+                &env,
+                0x222c01175718386f2e2e82eb122789e352e105a3b8fa852613bc534433ee428b
+            ))),
         ]
     }
 
@@ -248,8 +250,11 @@ mod tests {
     #[test]
     fn hex_round_trip() {
         let env = Env::default();
-        let hex_parts = [0, 0, 0, 0x1234567890abcdef];
-        let fr = Fr::from_parts(&env, hex_parts[0], hex_parts[1], hex_parts[2], hex_parts[3]);
+        let hex_parts = [0, 0, 0, 0x1234567890abcdefu64];
+        let fr = Fr(Bn254Fr::from_bytes(bytesn!(
+            &env,
+            0x0000000000000000000000000000000000000000000000001234567890abcdef
+        )));
         let bytes = fr.to_bytes();
 
         #[cfg(not(feature = "std"))]
