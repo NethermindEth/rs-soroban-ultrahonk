@@ -24,8 +24,13 @@ if [ ! -f "$PUBLIC_INPUTS" ] || [ ! -f "$PROOF" ]; then
   exit 1
 fi
 
-PI_SIZE=$(stat -c%s "$PUBLIC_INPUTS")
-PROOF_SIZE=$(stat -c%s "$PROOF")
+if [ "$(uname)" = "Darwin" ]; then
+    PI_SIZE=$(stat -f%z "$PUBLIC_INPUTS")
+    PROOF_SIZE=$(stat -f%z "$PROOF")
+else
+    PI_SIZE=$(stat -c%s "$PUBLIC_INPUTS")
+    PROOF_SIZE=$(stat -c%s "$PROOF")
+fi
 
 echo -e "${BLUE}--- Artifact Summary ---${NC}"
 echo "Public Inputs : $PI_SIZE bytes"

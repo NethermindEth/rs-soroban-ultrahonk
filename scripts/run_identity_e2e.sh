@@ -58,9 +58,15 @@ if [[ ! -f "${TARGET_DIR}/proof" || ! -f "${TARGET_DIR}/vk" || ! -f "${TARGET_DI
   exit 1
 fi
 
-PI_SIZE=$(stat -c%s "${TARGET_DIR}/public_inputs")
-PROOF_SIZE=$(stat -c%s "${TARGET_DIR}/proof")
-VK_SIZE=$(stat -c%s "${TARGET_DIR}/vk")
+if [ "$(uname)" = "Darwin" ]; then
+    PI_SIZE=$(stat -f%z "${TARGET_DIR}/public_inputs")
+    PROOF_SIZE=$(stat -f%z "${TARGET_DIR}/proof")
+    VK_SIZE=$(stat -f%z "${TARGET_DIR}/vk")
+else
+    PI_SIZE=$(stat -c%s "${TARGET_DIR}/public_inputs")
+    PROOF_SIZE=$(stat -c%s "${TARGET_DIR}/proof")
+    VK_SIZE=$(stat -c%s "${TARGET_DIR}/vk")
+fi
 
 echo "  Public inputs : ${PI_SIZE} bytes"
 echo "  Proof         : ${PROOF_SIZE} bytes"
