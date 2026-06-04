@@ -278,6 +278,10 @@ async function main() {
     action: 'store_true',
     help: 'Also submit the tx and report actual fee charged on-chain',
   });
+  parser.add_argument('--method', {
+    default: 'verify_proof',
+    help: 'Contract method to measure (default: verify_proof)',
+  });
 
   const args = parser.parse_args();
   const artifacts = loadArtifacts(args.dataset);
@@ -288,18 +292,19 @@ async function main() {
 
   console.log(`Dataset       : ${args.dataset}`);
   console.log(`Contract ID   : ${args.contract_id}`);
+  console.log(`Method        : ${args.method}`);
   console.log(`Source account: ${keypair.publicKey()}`);
 
-  const verifyResult = await measureMethod(
+  const result = await measureMethod(
     server,
     keypair,
     args.network_passphrase,
     args.contract_id,
-    'verify_proof',
+    args.method,
     [publicInputsScVal, proofBytesScVal],
     args.submit
   );
-  printResult('verify_proof', verifyResult);
+  printResult(args.method, result);
 }
 
 main().catch((err) => {
