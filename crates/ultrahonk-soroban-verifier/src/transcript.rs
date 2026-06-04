@@ -1,4 +1,12 @@
-//! Fiat–Shamir transcript for UltraHonk
+//! Fiat–Shamir transcript for UltraHonk.
+//!
+//! This module implements the Keccak-256 based transcript used by the native
+//! Barretenberg `UltraFlavor` verifier (v0.82.2).  Every challenge round,
+//! serialization step, and splitting primitive is documented with its BB source
+//! counterpart so that upgrades to BB can be re-audited mechanically.
+//!
+//! BB reference: `aztec-packages-v0.82.2/barretenberg/cpp/src/barretenberg/transcript/transcript.hpp`
+//!               (`KeccakTranscriptParams` / `NativeTranscriptParams`).
 
 use crate::trace;
 use crate::{
@@ -10,9 +18,14 @@ use crate::{
 };
 use soroban_sdk::{crypto::bn254::Bn254Fr, Bytes, Env};
 
+/// Serialize one affine coordinate into the transcript buffer using the
+/// BN254 base-field limb split: low 136 bits + high ≤118 bits.
+///
+/// BB: `transcript/transcript.hpp` — `add_element_frs_to_hash_buffer` for
+///      `BN254::AffineElement` (via `convert_to_bn254_frs<BaseField>`).
 #[inline]
 fn push_coord_halves(buf: &mut Bytes, coord: &[u8]) {
-    // Serialize one affine coordinate as (lo136, hi<=118) limbs.
+    // low 136 bits (17 bytes) + high ≤118 bits (15 bytes)
     let mut low = [0u8; 32];
     low[15..].copy_from_slice(&coord[15..]);
     buf.extend_from_slice(&low);
@@ -22,14 +35,25 @@ fn push_coord_halves(buf: &mut Bytes, coord: &[u8]) {
     buf.extend_from_slice(&high);
 }
 
+/// Serialize a G1 affine point into the transcript buffer.
+/// Each coordinate is split with `push_coord_halves`, yielding 4 × 32 bytes.
+///
+/// BB: `transcript/transcript.hpp` — `receive_from_prover<Commitment>` serialises
+///      `curve::BN254::AffineElement` the same way.
 fn push_point(buf: &mut Bytes, pt: &G1Point) {
-    // Serialize affine point coordinates into transcript limb layout.
+    // 4 × 32-byte limbs per point
     let bytes = pt.0.to_array();
     push_coord_halves(buf, &bytes[..32]);
     push_coord_halves(buf, &bytes[32..]);
 }
 
-/// Split a 32-byte field element into the two 128-bit transcript “halves” (lo/hi limb layout).
+/// Split a 32-byte challenge digest into two 128-bit field elements.
+///
+/// The low 128 bits become the first challenge; the high 128 bits (only ~126
+/// are valid for BN254) become the second.  This is the same split performed
+/// by `NativeTranscriptParams::split_challenge`.
+///
+/// BB: `transcript/transcript.hpp::NativeTranscriptParams::split_challenge`
 #[inline]
 fn split_challenge_from_be32(env: &Env, challenge_bytes: &[u8; 32]) -> (Fr, Fr) {
     let mut low_bytes = [0u8; 32];
@@ -42,22 +66,45 @@ fn split_challenge_from_be32(env: &Env, challenge_bytes: &[u8; 32]) -> (Fr, Fr) 
     )
 }
 
+/// Convenience wrapper: split a `Fr` challenge by first serialising it.
+///
+/// BB: `transcript/transcript.hpp::NativeTranscriptParams::split_challenge`
 fn split_challenge(challenge: &Fr) -> (Fr, Fr) {
     let env = challenge.0.env();
     split_challenge_from_be32(env, &challenge.to_bytes())
 }
 
+/// Hash a transcript buffer with Keccak-256 and interpret the digest as a
+/// BN254 scalar field element.
+///
+/// BB: `transcript/transcript.hpp::keccak_hash_uint256`
 #[inline(always)]
 fn hash_to_fr(bytes: &Bytes) -> Fr {
     Fr(Bn254Fr::from_bytes(hash32(bytes)))
 }
 
+/// Encode a `u64` as a 32-byte big-endian buffer (zero-padded on the left).
+///
+/// BB serialises small integers by converting them to `bb::fr` and writing the
+/// canonical 32-byte form, which yields the same layout.
+///
+/// BB: `oink_verifier.cpp::execute_preamble_round` (circuit_size, public_input_size,
+///      pub_inputs_offset are serialised this way).
 fn u64_to_be32(x: u64) -> [u8; 32] {
     let mut out = [0u8; 32];
     out[24..].copy_from_slice(&x.to_be_bytes());
     out
 }
 
+/// Generate the η, η₂, η₃ challenges (sorted-list accumulator round).
+///
+/// This function also absorbs the transcript preamble
+/// (`circuit_size`, `public_inputs_size`, `pub_inputs_offset`, all public inputs,
+/// the pairing-point object, and the first three wire commitments w₁, w₂, w₃).
+/// The first hash yields η and η₂; hashing the previous challenge bytes alone
+/// yields η₃ (duplex construction).
+///
+/// BB: `oink_verifier.cpp::execute_sorted_list_accumulator_round`
 fn generate_eta_challenge(
     env: &Env,
     proof: &Proof,
@@ -88,6 +135,12 @@ fn generate_eta_challenge(
     (eta, eta_two, eta_three, second)
 }
 
+/// Generate the β and γ challenges (log-derivative inverse round).
+///
+/// Absorbs `lookup_read_counts`, `lookup_read_tags`, and `w4` before hashing.
+/// Returns the two split challenges plus the next `previous_challenge` scalar.
+///
+/// BB: `oink_verifier.cpp::execute_log_derivative_inverse_round`
 fn generate_beta_and_gamma_challenges(
     env: &Env,
     previous_challenge: Fr,
@@ -107,6 +160,13 @@ fn generate_beta_and_gamma_challenges(
     (beta, gamma, next_previous_challenge)
 }
 
+/// Generate α₀ … α₂₄ (alpha batching challenges for subrelations).
+///
+/// Absorbs `lookup_inverses` and `z_perm`, then performs repeated duplex hashing
+/// to obtain 25 challenges.  This matches the `generate_alphas_round` sequence in
+/// the Oink verifier.
+///
+/// BB: `oink_verifier.cpp::generate_alphas_round`
 fn generate_alpha_challenges(
     env: &Env,
     previous_challenge: Fr,
@@ -142,6 +202,13 @@ fn generate_alpha_challenges(
     (alphas, next_previous_challenge)
 }
 
+/// Orchestrate the Oink challenge rounds that produce relation parameters.
+///
+/// Sequentially calls `generate_eta_challenge` → `generate_beta_and_gamma_challenges`
+/// to obtain η, η₂, η₃, β, γ.  `public_inputs_delta` is left zero; it is filled
+/// later by `verifier.rs::compute_public_input_delta`.
+///
+/// BB: `oink_verifier.cpp::OinkVerifier::verify` (challenge rounds 0–4)
 fn generate_relation_parameters_challenges(
     env: &Env,
     proof: &Proof,
@@ -171,6 +238,13 @@ fn generate_relation_parameters_challenges(
     (rp, next_previous_challenge)
 }
 
+/// Generate the gate-separator challenges β₀ … β₂₇.
+///
+/// Each challenge is produced by hashing the previous challenge bytes alone
+/// and taking the low 128 bits.  Only the first `log_n` values are used in
+/// practice; the rest are padding to `CONST_PROOF_SIZE_LOG_N`.
+///
+/// BB: `ultra_verifier.cpp::verify_proof` (gate-challenge loop)
 fn generate_gate_challenges(
     env: &Env,
     previous_challenge: Fr,
@@ -185,6 +259,12 @@ fn generate_gate_challenges(
     (gate_challenges, next_previous_challenge)
 }
 
+/// Generate the Sumcheck round challenges u₀ … u₂₇.
+///
+/// For each round the previous challenge bytes and the round's univariate
+/// coefficients are hashed together; the low 128 bits become uᵢ.
+///
+/// BB: `sumcheck/sumcheck.hpp::SumcheckVerifier::verify` (challenge loop)
 fn generate_sumcheck_challenges(
     env: &Env,
     proof: &Proof,
@@ -204,6 +284,11 @@ fn generate_sumcheck_challenges(
     (sumcheck_challenges, next_previous_challenge)
 }
 
+/// Generate ρ (the Gemini batching challenge).
+///
+/// Absorbs all 40 sumcheck evaluation claims before hashing.
+///
+/// BB: `commitment_schemes/shplonk/shplemini.hpp` (`get_challenge<Fr>("rho")`)
 fn generate_rho_challenge(env: &Env, proof: &Proof, previous_challenge: Fr) -> (Fr, Fr) {
     let mut data = Bytes::new(env);
     data.extend_from_slice(&previous_challenge.to_bytes());
@@ -215,6 +300,11 @@ fn generate_rho_challenge(env: &Env, proof: &Proof, previous_challenge: Fr) -> (
     (rho, next_previous_challenge)
 }
 
+/// Generate the Gemini folding challenge r.
+///
+/// Absorbs the 27 fold commitments (`gemini_fold_comms`) before hashing.
+///
+/// BB: `commitment_schemes/shplonk/shplemini.hpp` (`get_challenge<Fr>("Gemini:r")`)
 fn generate_gemini_r_challenge(env: &Env, proof: &Proof, previous_challenge: Fr) -> (Fr, Fr) {
     let mut data = Bytes::new(env);
     data.extend_from_slice(&previous_challenge.to_bytes());
@@ -226,6 +316,11 @@ fn generate_gemini_r_challenge(env: &Env, proof: &Proof, previous_challenge: Fr)
     (gemini_r, next_previous_challenge)
 }
 
+/// Generate ν (the Shplonk batching challenge).
+///
+/// Absorbs the 28 Gemini fold evaluations (`gemini_a_evaluations`) before hashing.
+///
+/// BB: `commitment_schemes/shplonk/shplemini.hpp` (`get_challenge<Fr>("Shplonk:nu")`)
 fn generate_shplonk_nu_challenge(env: &Env, proof: &Proof, previous_challenge: Fr) -> (Fr, Fr) {
     let mut data = Bytes::new(env);
     data.extend_from_slice(&previous_challenge.to_bytes());
@@ -237,6 +332,11 @@ fn generate_shplonk_nu_challenge(env: &Env, proof: &Proof, previous_challenge: F
     (shplonk_nu, next_previous_challenge)
 }
 
+/// Generate z (the Shplonk evaluation point).
+///
+/// Absorbs the Shplonk quotient commitment `shplonk_q` before hashing.
+///
+/// BB: `commitment_schemes/shplonk/shplemini.hpp` (`get_challenge<Fr>("Shplonk:z")`)
 fn generate_shplonk_z_challenge(env: &Env, proof: &Proof, previous_challenge: Fr) -> (Fr, Fr) {
     let mut data = Bytes::new(env);
     data.extend_from_slice(&previous_challenge.to_bytes());
@@ -246,6 +346,22 @@ fn generate_shplonk_z_challenge(env: &Env, proof: &Proof, previous_challenge: Fr
     (shplonk_z, next_previous_challenge)
 }
 
+/// Build the full transcript: all Fiat–Shamir challenges for UltraHonk verification.
+///
+/// Challenge order (identical to BB native verifier):
+/// 1. η, η₂, η₃  – sorted-list / lookup accumulator  
+/// 2. β, γ        – log-derivative inverse  
+/// 3. α₀…α₂₄      – subrelation batching  
+/// 4. gate βᵢ     – sumcheck gate separator  
+/// 5. uᵢ          – sumcheck round challenges  
+/// 6. ρ           – Gemini batching  
+/// 7. r           – Gemini folding  
+/// 8. ν           – Shplonk batching  
+/// 9. z           – Shplonk evaluation point  
+///
+/// BB: `oink_verifier.cpp::OinkVerifier::verify` + `ultra_verifier.cpp::verify_proof` +
+///      `sumcheck/sumcheck.hpp::SumcheckVerifier::verify` +
+///      `commitment_schemes/shplonk/shplemini.hpp::ShpleminiVerifier_::compute_batch_opening_claim`
 pub fn generate_transcript(
     env: &Env,
     proof: &Proof,

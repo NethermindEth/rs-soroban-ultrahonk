@@ -1,7 +1,19 @@
+//! Relation accumulation for UltraHonk.
 //!
-//! This module accumulates all of the UltraHonk relations (arithmetic, permutation,
-//! lookup, range, elliptic, auxiliary, Poseidon external/internal) into a single
-//! scalar which is then batched with the alpha challenges.
+//! Evaluates all 26 subrelations across 8 relation families at the purported
+//! evaluation point, then batches them with independent alpha challenges.
+//! Every formula was verified line-by-line against Barretenberg v0.82.2.
+//!
+//! BB reference (v0.82.2):
+//!   - `relations/ultra_arithmetic_relation.hpp`
+//!   - `relations/permutation_relation.hpp`
+//!   - `relations/logderiv_lookup_relation.hpp`
+//!   - `relations/delta_range_constraint_relation.hpp`
+//!   - `relations/elliptic_relation.hpp`
+//!   - `relations/auxiliary_relation.hpp`
+//!   - `relations/poseidon2_external_relation.hpp`
+//!   - `relations/poseidon2_internal_relation.hpp`
+//!   - `sumcheck_round.hpp::SumcheckVerifierRound::compute_full_relation_purported_value`
 
 use crate::field::Fr;
 use crate::types::{RelationParameters, Wire, NUMBER_OF_SUBRELATIONS};
@@ -18,6 +30,8 @@ impl Index<Wire> for [Fr] {
 }
 
 /// Accumulate the two arithmetic subrelations (indices 0 and 1).
+///
+/// BB: `relations/ultra_arithmetic_relation.hpp::UltraArithmeticRelation::accumulate`
 fn accumulate_arithmetic_relation(env: &Env, p: &[Fr], evals: &mut [Fr], domain_sep: &Fr) {
     let one = Fr::one(env);
     let two = Fr::from_u64(env, 2);
@@ -53,6 +67,8 @@ fn accumulate_arithmetic_relation(env: &Env, p: &[Fr], evals: &mut [Fr], domain_
 }
 
 /// Accumulate the two permutation subrelations (indices 2 and 3).
+///
+/// BB: `relations/permutation_relation.hpp::UltraPermutationRelation::accumulate`
 fn accumulate_permutation_relation(
     p: &[Fr],
     rp: &RelationParameters,
@@ -100,6 +116,8 @@ fn accumulate_permutation_relation(
 }
 
 /// Accumulate the two lookup log-derivative subrelations (indices 4 and 5).
+///
+/// BB: `relations/logderiv_lookup_relation.hpp::LogDerivLookupRelation::accumulate`
 fn accumulate_log_derivative_lookup_relation(
     p: &[Fr],
     rp: &RelationParameters,
@@ -132,6 +150,8 @@ fn accumulate_log_derivative_lookup_relation(
 }
 
 /// Accumulate the four range-check subrelations (indices 6..9).
+///
+/// BB: `relations/delta_range_constraint_relation.hpp::DeltaRangeConstraintRelation::accumulate`
 fn accumulate_delta_range_relation(env: &Env, p: &[Fr], evals: &mut [Fr], domain_sep: &Fr) {
     let minus_one = Fr::minus_one(env);
     let minus_two = Fr::minus_two(env);
@@ -161,6 +181,10 @@ fn accumulate_delta_range_relation(env: &Env, p: &[Fr], evals: &mut [Fr], domain
 }
 
 /// Accumulate elliptic-curve subrelations (indices 10..11).
+///
+/// Uses Grumpkin curve parameter `b = -17` (so `B_NEG = 17`).
+///
+/// BB: `relations/elliptic_relation.hpp::EllipticRelation::accumulate`
 fn accumulate_elliptic_relation(env: &Env, p: &[Fr], evals: &mut [Fr], domain_sep: &Fr) {
     let one = Fr::one(env);
     let nine = Fr::from_u64(env, 9);
@@ -214,6 +238,11 @@ fn accumulate_elliptic_relation(env: &Env, p: &[Fr], evals: &mut [Fr], domain_se
 }
 
 /// Accumulate auxiliary subrelations (indices 12..17).
+///
+/// Covers non-native field gates, limb accumulators, memory record checks,
+/// ROM consistency, and RAM consistency.
+///
+/// BB: `relations/auxiliary_relation.hpp::AuxiliaryRelation::accumulate`
 fn accumulate_auxillary_relation(
     env: &Env,
     p: &[Fr],
@@ -324,6 +353,8 @@ fn accumulate_auxillary_relation(
 }
 
 /// Accumulate Poseidon external subrelations (indices 18..21).
+///
+/// BB: `relations/poseidon2_external_relation.hpp::Poseidon2ExternalRelation::accumulate`
 fn accumulate_poseidon_external_relation(p: &[Fr], evals: &mut [Fr], domain_sep: &Fr) {
     let wl = &p[Wire::Wl];
     let ql = &p[Wire::Ql];
@@ -367,6 +398,10 @@ fn accumulate_poseidon_external_relation(p: &[Fr], evals: &mut [Fr], domain_sep:
 }
 
 /// Accumulate Poseidon internal subrelations (indices 22..25).
+///
+/// Uses the internal matrix diagonal constants from `field.rs::Fr::internal_matrix_diagonal`.
+///
+/// BB: `relations/poseidon2_internal_relation.hpp::Poseidon2InternalRelation::accumulate`
 fn accumulate_poseidon_internal_relation(
     p: &[Fr],
     evals: &mut [Fr],
@@ -398,7 +433,13 @@ fn accumulate_poseidon_internal_relation(
     evals[25] = (w4 - w4_shift) * q_poseidon_dom;
 }
 
-/// Batch all NUM_SUBRELATIONS = 26 subrelations with the alpha challenges.
+/// Batch all 26 subrelations with the independent alpha challenges.
+///
+/// `UltraFlavor` is a folding flavor, so alphas are independent challenges
+/// (not powers of a single alpha).  Result:
+///   `evals[0]·1 + evals[1]·α₀ + … + evals[25]·α₂₄`
+///
+/// BB: `relations/utils.hpp::RelationUtils::scale_and_batch_elements`
 fn scale_and_batch_subrelations(evaluations: &[Fr], subrelation_challenges: &[Fr]) -> Fr {
     let mut accumulator = evaluations[0].clone();
     for i in 1..NUMBER_OF_SUBRELATIONS {
@@ -407,7 +448,9 @@ fn scale_and_batch_subrelations(evaluations: &[Fr], subrelation_challenges: &[Fr
     accumulator
 }
 
-/// Main entrypoint: accumulate all subrelations and batch with alphas.
+/// Main entrypoint: evaluate all 26 subrelations and batch with alphas.
+///
+/// BB: `sumcheck_round.hpp::SumcheckVerifierRound::compute_full_relation_purported_value`
 pub fn accumulate_relation_evaluations(
     env: &Env,
     purported_evaluations: &[Fr],

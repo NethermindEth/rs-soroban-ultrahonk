@@ -1,17 +1,40 @@
-//! Shplemini batch-opening verifier for BN254
+//! Shplemini batch-opening verifier (Gemini + Shplonk + KZG) for BN254.
+//!
+//! Verifies the polynomial commitment scheme opening by constructing a single
+//! MSM that accumulates unshifted/shifted claims, Gemini fold evaluations, and
+//! the constant term, then performs a BN254 pairing check.
+//!
+//! BB reference (v0.82.2):
+//!   - `commitment_schemes/shplonk/shplemini.hpp::ShpleminiVerifier_::compute_batch_opening_claim`
+//!   - `commitment_schemes/kzg/kzg.hpp::KZG::reduce_verify_batch_opening_claim`
 
 use crate::ec::{g1_msm, pairing_check};
 use crate::field::{batch_inverse, Fr};
 use crate::trace;
 use crate::types::{
     G1Point, Proof, Transcript, VerificationKey, CONST_PROOF_SIZE_LOG_N, NUMBER_OF_ENTITIES,
-    NUMBER_TO_BE_SHIFTED, NUMBER_UNSHIFTED,
+    NUMBER_UNSHIFTED,
 };
 use core::array::repeat;
 use core::ops::Neg;
 use soroban_sdk::Env;
 
-/// Shplemini verification
+/// Verify the Shplemini batch-opening claim.
+///
+/// High-level flow (matching BB):
+/// 1. Compute powers of Gemini evaluation challenge `r^{2^i}`.
+/// 2. Batch-invert all Shplonk/Gemini denominators (`z ± r^{2^j}`, fold-round
+///    denominators, and `r` itself).
+/// 3. Compute Shplonk scalar weights for unshifted and shifted polynomial batches.
+/// 4. Accumulate batched multilinear evaluation `∑ ρⁱ·evalᵢ`.
+/// 5. Load VK + proof commitments into MSM arrays (shifted scalars merged into
+///    unshifted counterparts to match BB's `remove_repeated_commitments`).
+/// 6. Reconstruct positive Gemini fold evaluations `Aⱼ(r^{2^j})`.
+/// 7. Accumulate constant term and fold-round MSM scalars.
+/// 8. Add generator (with constant-term scalar) and KZG quotient (with scalar `z`).
+/// 9. Single MSM + pairing check.
+///
+/// BB: `commitment_schemes/shplonk/shplemini.hpp::ShpleminiVerifier_::compute_batch_opening_claim`
 pub fn verify_shplemini(
     env: &Env,
     proof: &Proof,
@@ -76,14 +99,16 @@ pub fn verify_shplemini(
     let gemini_r_inv = inverted[2].clone();
 
     // 2) allocate arrays
-    // Match Solidity sizing: NUMBER_OF_ENTITIES + CONST_PROOF_SIZE_LOG_N + 2
+    // Deduplicated layout: shifted commitments merged into unshifted counterparts.
     // Layout:
     //   [0]                 = shplonk_Q
-    //   [1..=40]            = VK + proof entities (NUMBER_OF_ENTITIES)
-    //   [41..=67]           = gemini_fold_comms (CONST_PROOF_SIZE_LOG_N - 1 = 27)
-    //   [68]                = generator (1,2) with const_acc scalar
-    //   [69]                = kzg_quotient with scalar z
-    const TOTAL: usize = 1 + NUMBER_OF_ENTITIES + CONST_PROOF_SIZE_LOG_N + 1;
+    //   [1..=27]            = VK precomputed (27)
+    //   [28..=32]           = proof wires w1,w2,w3,w4,z_perm (merged shifted scalars)
+    //   [33..=35]           = proof lookup_inverses, read_counts, read_tags
+    //   [36..=62]           = gemini_fold_comms (CONST_PROOF_SIZE_LOG_N - 1 = 27)
+    //   [63]                = generator with const_acc scalar
+    //   [64]                = kzg_quotient with scalar z
+    const TOTAL: usize = 1 + NUMBER_UNSHIFTED + CONST_PROOF_SIZE_LOG_N + 1;
     trace!("total = {}", TOTAL);
     let mut scalars = Fr::zero_array::<TOTAL>(env);
     let mut coms = repeat::<G1Point, TOTAL>(G1Point::infinity(env));
@@ -100,8 +125,7 @@ pub fn verify_shplemini(
     // 5) weight sumcheck evals
     let mut rho_pow = one.clone();
     let mut eval_acc = Fr::zero(env);
-    let shifted_end = NUMBER_UNSHIFTED + NUMBER_TO_BE_SHIFTED;
-    debug_assert_eq!(NUMBER_OF_ENTITIES, shifted_end);
+    let mut eval_scalars = Fr::zero_array::<NUMBER_OF_ENTITIES>(env);
     for (idx, eval) in proof
         .sumcheck_evaluations
         .iter()
@@ -113,17 +137,26 @@ pub fn verify_shplemini(
         } else {
             neg_shifted.clone()
         } * &rho_pow;
-        scalars[1 + idx] = scalar;
+        eval_scalars[idx] = scalar;
         eval_acc = eval_acc + &(eval * &rho_pow);
         rho_pow = rho_pow * &tp.rho;
     }
-    // 6) load VK & proof (MSM layout must match Solidity: VK order, then proof wires unshifted + shifted)
+
+    // Merge shifted scalars into their unshifted counterparts:
+    // WlShift(35)->Wl(27), WrShift(36)->Wr(28), WoShift(37)->Wo(29),
+    // W4Shift(38)->W4(30), ZPermShift(39)->ZPerm(31)
+    for (unshifted, shifted) in [(27, 35), (28, 36), (29, 37), (30, 38), (31, 39)] {
+        eval_scalars[unshifted] = eval_scalars[unshifted].clone() + eval_scalars[shifted].clone();
+    }
+
+    // 6) load VK & proof (deduplicated: shifted commitments merged into unshifted)
     {
         let mut j = 1;
         macro_rules! push_vk {
             ($($field:ident),+ $(,)?) => {
                 $(
                     coms[j] = vk.$field.clone();
+                    scalars[j] = eval_scalars[j - 1].clone();
                     j += 1;
                 )+
             };
@@ -158,24 +191,31 @@ pub fn verify_shplemini(
             lagrange_last
         ];
 
-        for p in [
-            &proof.w1,
-            &proof.w2,
-            &proof.w3,
-            &proof.w4,
-            &proof.z_perm,
-            &proof.lookup_inverses,
-            &proof.lookup_read_counts,
-            &proof.lookup_read_tags,
-        ] {
-            coms[j] = p.clone();
-            j += 1;
-        }
-        for p in [&proof.w1, &proof.w2, &proof.w3, &proof.w4, &proof.z_perm] {
-            coms[j] = p.clone();
-            j += 1;
-        }
-        let _ = j;
+        coms[j] = proof.w1.clone();
+        scalars[j] = eval_scalars[27].clone();
+        j += 1;
+        coms[j] = proof.w2.clone();
+        scalars[j] = eval_scalars[28].clone();
+        j += 1;
+        coms[j] = proof.w3.clone();
+        scalars[j] = eval_scalars[29].clone();
+        j += 1;
+        coms[j] = proof.w4.clone();
+        scalars[j] = eval_scalars[30].clone();
+        j += 1;
+        coms[j] = proof.z_perm.clone();
+        scalars[j] = eval_scalars[31].clone();
+        j += 1;
+        coms[j] = proof.lookup_inverses.clone();
+        scalars[j] = eval_scalars[32].clone();
+        j += 1;
+        coms[j] = proof.lookup_read_counts.clone();
+        scalars[j] = eval_scalars[33].clone();
+        j += 1;
+        coms[j] = proof.lookup_read_tags.clone();
+        scalars[j] = eval_scalars[34].clone();
+        j += 1;
+        let _ = j; // j == 36
     }
 
     // 7) folding rounds — use batch-inverted denominators
@@ -197,7 +237,7 @@ pub fn verify_shplemini(
     let mut v_pow = nu_sq.clone();
     // 9) further folding + commit — use batch-inverted denominators
     // Base index where fold commitments start
-    let base = 1 + NUMBER_OF_ENTITIES;
+    let base = 1 + NUMBER_UNSHIFTED;
     for j in 1..log_n {
         let pos_inv = inverted[further_base + 2 * (j - 1)].clone();
         let neg_inv = inverted[further_base + 2 * (j - 1) + 1].clone();
