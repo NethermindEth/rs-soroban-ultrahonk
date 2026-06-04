@@ -225,8 +225,9 @@ mod tests {
     fn test_coord_limbs_round_trip() {
         // Create a known 32-byte array
         let mut original = [0u8; 32];
-        for i in 0..32 {
-            original[i] = i as u8;
+
+        for (i, limb) in original.iter_mut().enumerate() {
+            *limb = i as u8;
         }
 
         let (lo, hi) = coord_to_halves_be(&original);

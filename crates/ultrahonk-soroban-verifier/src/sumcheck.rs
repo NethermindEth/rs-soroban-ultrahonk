@@ -161,12 +161,12 @@ pub fn verify_sumcheck(
         crate::trace!("===== SUMCHECK FINAL CHECK FAILED =====");
         crate::trace!(
             "grand_relation = 0x{}",
-            hex::encode(grand_honk_relation_sum.to_bytes())
+            crate::debug::Hex(&grand_honk_relation_sum.to_bytes())
         );
-        crate::trace!("target = 0x{}", hex::encode(round_target.to_bytes()));
+        crate::trace!("target = 0x{}", crate::debug::Hex(&round_target.to_bytes()));
         crate::trace!(
             "difference = 0x{}",
-            hex::encode((grand_honk_relation_sum - round_target).to_bytes())
+            crate::debug::Hex(&(grand_honk_relation_sum - round_target).to_bytes())
         );
         crate::trace!("======================================");
         Err("sumcheck final mismatch")
