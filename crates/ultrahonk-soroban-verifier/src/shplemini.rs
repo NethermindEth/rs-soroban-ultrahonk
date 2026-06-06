@@ -93,6 +93,13 @@ pub fn verify_shplemini(
         "shplemini: batch inversion failed (zero denominator in shplonk/gemini/fold)"
     })?;
 
+    // Defense-in-depth: ensure no inverted result is zero before use.
+    for i in 0..batch_size {
+        if inverted[i].is_zero() {
+            return Err("shplemini: batch inversion produced zero result");
+        }
+    }
+
     // Unpack results
     let pos0 = inverted[0].clone();
     let neg0 = inverted[1].clone();
