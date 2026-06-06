@@ -41,8 +41,12 @@ pub fn verify_shplemini(
     vk: &VerificationKey,
     tp: &Transcript,
 ) -> Result<(), &'static str> {
-    // 1) r^{2^i}
     let log_n = vk.log_circuit_size as usize;
+    if log_n == 0 || log_n > CONST_PROOF_SIZE_LOG_N {
+        return Err("shplemini: log_circuit_size out of range");
+    }
+
+    // 1) r^{2^i}
     let one = Fr::one(env);
     let two = Fr::from_u64(env, 2);
     let mut r_pows = Fr::zero_array::<CONST_PROOF_SIZE_LOG_N>(env);

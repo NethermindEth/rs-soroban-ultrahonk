@@ -69,7 +69,7 @@ impl UltraHonkVerifier {
         public_inputs_bytes: &Bytes,
     ) -> Result<(), VerifyError> {
         // 1) parse proof
-        let proof = load_proof(env, proof_bytes);
+        let proof = load_proof(env, proof_bytes).map_err(VerifyError::InvalidInput)?;
 
         // 2) sanity on public inputs (length and VK metadata if present)
         if !public_inputs_bytes.len().is_multiple_of(32) {
@@ -97,7 +97,8 @@ impl UltraHonkVerifier {
             self.vk.circuit_size,
             pis_total,
             pub_inputs_offset,
-        );
+        )
+        .map_err(VerifyError::InvalidInput)?;
 
         // 4) Public delta
         t.rel_params.public_inputs_delta = Self::compute_public_input_delta(
@@ -163,6 +164,9 @@ impl UltraHonkVerifier {
             denominator = &denominator * &(&denominator_acc + public_input);
             numerator_acc = &numerator_acc + beta;
             denominator_acc = &denominator_acc - beta;
+        }
+        if denominator.is_zero() {
+            return Err("denominator is zero in public_input_delta");
         }
         let denominator_inv = denominator.inverse();
         Ok(numerator * denominator_inv)

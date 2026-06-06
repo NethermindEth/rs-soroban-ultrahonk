@@ -12,7 +12,7 @@ use core::array;
 use crate::{
     field::{batch_inverse, Fr},
     relations::accumulate_relation_evaluations,
-    types::{Transcript, VerificationKey, BATCHED_RELATION_PARTIAL_LENGTH},
+    types::{Transcript, VerificationKey, BATCHED_RELATION_PARTIAL_LENGTH, CONST_PROOF_SIZE_LOG_N},
 };
 use soroban_sdk::Env;
 
@@ -143,6 +143,9 @@ pub fn verify_sumcheck(
     vk: &VerificationKey,
 ) -> Result<(), &'static str> {
     let log_n = vk.log_circuit_size as usize;
+    if log_n == 0 || log_n > CONST_PROOF_SIZE_LOG_N {
+        return Err("sumcheck: log_circuit_size out of range");
+    }
     let zero = Fr::zero(env);
     let one = Fr::one(env);
     let barycentric_weights: [Fr; BATCHED_RELATION_PARTIAL_LENGTH] =
