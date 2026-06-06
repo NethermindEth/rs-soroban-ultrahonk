@@ -39,7 +39,7 @@ use ultrahonk_soroban_verifier::UltraHonkVerifier;
 let env = Env::default();
 let vk_bytes = std::fs::read("vk").unwrap();
 let vk = Bytes::from_slice(&env, &vk_bytes);
-let verifier = UltraHonkVerifier::new(&env, &vk).ok_or("vk parse")?;
+let verifier = UltraHonkVerifier::new(&env, &vk).map_err(|e| format!("vk load failed: {e:?}"))?;
 let proof_bytes = std::fs::read("proof").unwrap();
 let public_inputs_bytes = std::fs::read("public_inputs").unwrap();
 let proof = Bytes::from_slice(&env, &proof_bytes);

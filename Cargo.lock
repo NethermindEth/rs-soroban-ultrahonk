@@ -1151,6 +1151,7 @@ version = "0.1.0"
 dependencies = [
  "soroban-env-host",
  "soroban-sdk",
+ "ultrahonk-test-utils",
  "ultrahonk_soroban_verifier",
 ]
 
