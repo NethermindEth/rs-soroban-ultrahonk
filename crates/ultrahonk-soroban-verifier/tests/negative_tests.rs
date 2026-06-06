@@ -167,12 +167,11 @@ fn mutated_public_inputs_fib_chain_fails() {
 }
 
 // =========================================================================
-// 4. Truncated proof (len - 1) — must panic in load_proof's assert_eq!
+// 4. Truncated proof (len - 1) — must fail gracefully
 // =========================================================================
 
 #[test]
-#[should_panic(expected = "proof bytes len")]
-fn truncated_proof_simple_circuit_panics() {
+fn truncated_proof_simple_circuit_fails() {
     let env = test_env();
     let f = Fixture::load("simple_circuit");
     let short = truncate(&f.proof, f.proof.len() - 1);
@@ -181,12 +180,14 @@ fn truncated_proof_simple_circuit_panics() {
     let pi = Bytes::from_slice(&env, &f.public_inputs);
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
-    let _ = v.verify(&env, &proof, &pi);
+    assert!(
+        v.verify(&env, &proof, &pi).is_err(),
+        "truncated proof must not verify (simple_circuit)"
+    );
 }
 
 #[test]
-#[should_panic(expected = "proof bytes len")]
-fn truncated_proof_fib_chain_panics() {
+fn truncated_proof_fib_chain_fails() {
     let env = test_env();
     let f = Fixture::load("fib_chain");
     let short = truncate(&f.proof, f.proof.len() - 1);
@@ -195,16 +196,18 @@ fn truncated_proof_fib_chain_panics() {
     let pi = Bytes::from_slice(&env, &f.public_inputs);
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
-    let _ = v.verify(&env, &proof, &pi);
+    assert!(
+        v.verify(&env, &proof, &pi).is_err(),
+        "truncated proof must not verify (fib_chain)"
+    );
 }
 
 // =========================================================================
-// 5. Empty proof — must panic in load_proof's assert_eq!
+// 5. Empty proof — must fail gracefully
 // =========================================================================
 
 #[test]
-#[should_panic(expected = "proof bytes len")]
-fn empty_proof_simple_circuit_panics() {
+fn empty_proof_simple_circuit_fails() {
     let env = test_env();
     let f = Fixture::load("simple_circuit");
     let proof = Bytes::new(&env);
@@ -212,12 +215,14 @@ fn empty_proof_simple_circuit_panics() {
     let pi = Bytes::from_slice(&env, &f.public_inputs);
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
-    let _ = v.verify(&env, &proof, &pi);
+    assert!(
+        v.verify(&env, &proof, &pi).is_err(),
+        "empty proof must not verify (simple_circuit)"
+    );
 }
 
 #[test]
-#[should_panic(expected = "proof bytes len")]
-fn empty_proof_fib_chain_panics() {
+fn empty_proof_fib_chain_fails() {
     let env = test_env();
     let f = Fixture::load("fib_chain");
     let proof = Bytes::new(&env);
@@ -225,7 +230,10 @@ fn empty_proof_fib_chain_panics() {
     let pi = Bytes::from_slice(&env, &f.public_inputs);
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
-    let _ = v.verify(&env, &proof, &pi);
+    assert!(
+        v.verify(&env, &proof, &pi).is_err(),
+        "empty proof must not verify (fib_chain)"
+    );
 }
 
 // =========================================================================

@@ -105,8 +105,10 @@ fn g1_from_proof_blob_at(env: &Env, blob: &[u8], point_idx: usize) -> G1Point {
 ///
 /// Note (bb v0.87.0): G1 coordinates are encoded as two limbs per coordinate
 /// using the (lo136, hi<=118) split and stored in the order (x_lo, x_hi, y_lo, y_hi).
-pub fn load_proof(env: &Env, proof_bytes: &Bytes) -> Proof {
-    assert_eq!(proof_bytes.len() as usize, PROOF_BYTES, "proof bytes len");
+pub fn load_proof(env: &Env, proof_bytes: &Bytes) -> Result<Proof, &'static str> {
+    if proof_bytes.len() as usize != PROOF_BYTES {
+        return Err("proof bytes length mismatch");
+    }
     let mut boundary = 0u32;
 
     // 0) pairing point object — one host read, then in-memory Fr decode
@@ -150,7 +152,7 @@ pub fn load_proof(env: &Env, proof_bytes: &Bytes) -> Proof {
 
     debug_assert_eq!(boundary as usize, PROOF_BYTES);
 
-    Proof {
+    Ok(Proof {
         pairing_point_object,
         w1,
         w2,
@@ -166,7 +168,7 @@ pub fn load_proof(env: &Env, proof_bytes: &Bytes) -> Proof {
         gemini_a_evaluations,
         shplonk_q,
         kzg_quotient,
-    }
+    })
 }
 
 /// Deserialize a `VerificationKey` from its canonical byte representation.
@@ -194,14 +196,22 @@ pub fn load_vk_from_bytes(env: &Env, bytes: &Bytes) -> Option<VerificationKey> {
     let public_inputs_size = read_u64(bytes, &mut idx);
     let pub_inputs_offset = read_u64(bytes, &mut idx);
 
+    // Validate structural parameters immediately after parsing.
+    if log_circuit_size == 0 || log_circuit_size > CONST_PROOF_SIZE_LOG_N as u64 {
+        return None;
+    }
+    if public_inputs_size < PAIRING_POINTS_SIZE as u64 {
+        return None;
+    }
+
     // One contiguous read for all G1 points (27 × 64 bytes), then parse in layout order.
     let points_bytes = read_bytes::<POINT_BLOB_LEN>(bytes, &mut idx);
     let pts: [G1Point; NUM_POINTS] = array::from_fn(|i| {
         let off = i * 64;
-        G1Point::from_bytes(
-            env,
-            <&[u8; 64]>::try_from(&points_bytes[off..off + 64]).unwrap(),
-        )
+        let chunk: &[u8; 64] = (&points_bytes[off..off + 64])
+            .try_into()
+            .expect("vk point chunk");
+        G1Point::from_bytes(env, chunk)
     });
     debug_assert_eq!(idx as usize, EXPECTED_LEN);
 
@@ -262,6 +272,25 @@ mod tests {
     }
 
     #[test]
+    fn test_load_proof_malformed_input() {
+        let env = Env::default();
+
+        // Too short
+        let bytes_short = Bytes::from_slice(&env, &[0u8; 10]);
+        let result = load_proof(&env, &bytes_short);
+
+        assert_eq!(result.err().unwrap(), "proof bytes length mismatch");
+
+        // Too long
+        let long_bytes = [0u8; PROOF_BYTES + 1];
+        let bytes_long = Bytes::from_slice(&env, &long_bytes);
+        assert_eq!(
+            load_proof(&env, &bytes_long).err().unwrap(),
+            "proof bytes length mismatch"
+        );
+    }
+
+    #[test]
     fn test_load_vk_malformed_input() {
         let env = Env::default();
 
@@ -277,5 +306,22 @@ mod tests {
         let long_bytes = [0u8; EXPECTED_LEN + 1];
         let bytes_long = Bytes::from_slice(&env, &long_bytes);
         assert!(load_vk_from_bytes(&env, &bytes_long).is_none());
+
+        // Correct length but log_circuit_size = 0
+        let mut zero_log = [0u8; EXPECTED_LEN];
+        // circuit_size = 1 (big-endian at offset 0..8)
+        zero_log[7] = 1;
+        // log_circuit_size = 0 (already zero at offset 8..16)
+        let bytes_zero_log = Bytes::from_slice(&env, &zero_log);
+        assert!(load_vk_from_bytes(&env, &bytes_zero_log).is_none());
+
+        // Correct length but log_circuit_size > CONST_PROOF_SIZE_LOG_N
+        let mut large_log = [0u8; EXPECTED_LEN];
+        // circuit_size = 1
+        large_log[7] = 1;
+        // log_circuit_size = 29 (big-endian at offset 8..16)
+        large_log[15] = 29;
+        let bytes_large_log = Bytes::from_slice(&env, &large_log);
+        assert!(load_vk_from_bytes(&env, &bytes_large_log).is_none());
     }
 }

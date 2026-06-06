@@ -13,7 +13,8 @@ use crate::{
     field::Fr,
     hash::hash32,
     types::{
-        G1Point, Proof, RelationParameters, Transcript, CONST_PROOF_SIZE_LOG_N, NUMBER_OF_ALPHAS,
+        G1Point, Proof, RelationParameters, Transcript, BATCHED_RELATION_PARTIAL_LENGTH,
+        CONST_PROOF_SIZE_LOG_N, NUMBER_OF_ALPHAS, NUMBER_OF_ENTITIES, PAIRING_POINTS_SIZE,
     },
 };
 use soroban_sdk::{crypto::bn254::Bn254Fr, Bytes, Env};
@@ -362,6 +363,34 @@ fn generate_shplonk_z_challenge(env: &Env, proof: &Proof, previous_challenge: Fr
 /// BB: `oink_verifier.cpp::OinkVerifier::verify` + `ultra_verifier.cpp::verify_proof` +
 ///      `sumcheck/sumcheck.hpp::SumcheckVerifier::verify` +
 ///      `commitment_schemes/shplonk/shplemini.hpp::ShpleminiVerifier_::compute_batch_opening_claim`
+/// Verify that a deserialized Proof contains all expected elements with correct sizes.
+///
+/// Fixed-size arrays guarantee these lengths in Rust, but explicit checks document
+/// the security assumption and protect against future refactoring.
+fn validate_proof(proof: &Proof) -> Result<(), &'static str> {
+    if proof.pairing_point_object.len() != PAIRING_POINTS_SIZE {
+        return Err("invalid pairing_point_object size");
+    }
+    if proof.sumcheck_univariates.len() != CONST_PROOF_SIZE_LOG_N {
+        return Err("invalid sumcheck_univariates size");
+    }
+    for univ in proof.sumcheck_univariates.iter() {
+        if univ.len() != BATCHED_RELATION_PARTIAL_LENGTH {
+            return Err("invalid sumcheck_univariate coefficient count");
+        }
+    }
+    if proof.sumcheck_evaluations.len() != NUMBER_OF_ENTITIES {
+        return Err("invalid sumcheck_evaluations size");
+    }
+    if proof.gemini_fold_comms.len() != CONST_PROOF_SIZE_LOG_N - 1 {
+        return Err("invalid gemini_fold_comms size");
+    }
+    if proof.gemini_a_evaluations.len() != CONST_PROOF_SIZE_LOG_N {
+        return Err("invalid gemini_a_evaluations size");
+    }
+    Ok(())
+}
+
 pub fn generate_transcript(
     env: &Env,
     proof: &Proof,
@@ -369,7 +398,9 @@ pub fn generate_transcript(
     circuit_size: u64,
     public_inputs_size: u64,
     pub_inputs_offset: u64,
-) -> Transcript {
+) -> Result<Transcript, &'static str> {
+    validate_proof(proof)?;
+
     // 1) eta/beta/gamma
     let (rp, previous_challenge) = generate_relation_parameters_challenges(
         env,
@@ -426,7 +457,7 @@ pub fn generate_transcript(
     trace!("public_inputs_offset = {}", pub_inputs_offset);
     trace!("=================================");
 
-    Transcript {
+    Ok(Transcript {
         rel_params: rp,
         alphas,
         gate_challenges: gate_chals,
@@ -435,7 +466,7 @@ pub fn generate_transcript(
         gemini_r,
         shplonk_nu,
         shplonk_z,
-    }
+    })
 }
 
 #[cfg(test)]
@@ -453,7 +484,7 @@ mod tests {
         let vk_bytes = Bytes::from_slice(&env, &f.vk);
         let pi_bytes = Bytes::from_slice(&env, &f.public_inputs);
 
-        let proof = load_proof(&env, &proof_bytes);
+        let proof = load_proof(&env, &proof_bytes).unwrap();
         let vk = load_vk_from_bytes(&env, &vk_bytes).unwrap();
 
         let t = generate_transcript(
@@ -463,7 +494,8 @@ mod tests {
             vk.circuit_size,
             vk.public_inputs_size,
             1, // pub_inputs_offset
-        );
+        )
+        .unwrap();
 
         assert_eq!(
             t.rel_params.eta.to_bytes(),
