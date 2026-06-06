@@ -5,7 +5,7 @@
 //! the tampered input.
 
 use soroban_sdk::{testutils::Ledger, Bytes, Env};
-use ultrahonk_soroban_verifier::UltraHonkVerifier;
+use ultrahonk_soroban_verifier::{UltraHonkVerifier, VkLoadError};
 use ultrahonk_test_utils::{mutate_byte, truncate, Fixture};
 
 // ---------------------------------------------------------------------------
@@ -262,6 +262,65 @@ fn empty_vk_fails() {
         UltraHonkVerifier::new(&env, &vk).is_err(),
         "empty VK must fail to parse"
     );
+}
+
+// =========================================================================
+// 6b. Exact VkLoadError variants
+// =========================================================================
+
+#[test]
+fn empty_vk_returns_wrong_length() {
+    let env = test_env();
+    let vk = Bytes::new(&env);
+    assert!(matches!(
+        UltraHonkVerifier::new(&env, &vk),
+        Err(VkLoadError::WrongLength)
+    ));
+}
+
+#[test]
+fn truncated_vk_returns_wrong_length() {
+    let env = test_env();
+    let f = Fixture::load("simple_circuit");
+    let short_vk = truncate(&f.vk, f.vk.len() - 1);
+    let vk = Bytes::from_slice(&env, &short_vk);
+    assert!(matches!(
+        UltraHonkVerifier::new(&env, &vk),
+        Err(VkLoadError::WrongLength)
+    ));
+}
+
+#[test]
+fn vk_with_zero_log_circuit_size_returns_invalid_parameters() {
+    let env = test_env();
+    let f = Fixture::load("simple_circuit");
+    let mut bad_vk = f.vk.clone();
+    // Set circuit_size = 1 at bytes 0..8 and zero out log_circuit_size at bytes 8..16.
+    bad_vk[7] = 1;
+    for b in &mut bad_vk[8..16] {
+        *b = 0;
+    }
+    let vk = Bytes::from_slice(&env, &bad_vk);
+    assert!(matches!(
+        UltraHonkVerifier::new(&env, &vk),
+        Err(VkLoadError::InvalidParameters)
+    ));
+}
+
+#[test]
+fn vk_with_oversized_log_circuit_size_returns_invalid_parameters() {
+    let env = test_env();
+    let f = Fixture::load("simple_circuit");
+    let mut bad_vk = f.vk.clone();
+    // circuit_size = 1 at bytes 0..8
+    bad_vk[7] = 1;
+    // log_circuit_size = 29 at bytes 8..16 (> CONST_PROOF_SIZE_LOG_N = 28)
+    bad_vk[15] = 29;
+    let vk = Bytes::from_slice(&env, &bad_vk);
+    assert!(matches!(
+        UltraHonkVerifier::new(&env, &vk),
+        Err(VkLoadError::InvalidParameters)
+    ));
 }
 
 // =========================================================================

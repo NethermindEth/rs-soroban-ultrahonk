@@ -177,13 +177,16 @@ pub fn load_proof(env: &Env, proof_bytes: &Bytes) -> Result<Proof, &'static str>
 /// The point order matches `PrecomputedEntities` in BB.
 ///
 /// BB: `flavor/ultra_flavor.hpp::VerificationKey_`
-pub fn load_vk_from_bytes(env: &Env, bytes: &Bytes) -> Option<VerificationKey> {
+pub fn load_vk_from_bytes(
+    env: &Env,
+    bytes: &Bytes,
+) -> Result<VerificationKey, crate::verifier::VkLoadError> {
     const HEADER_WORDS: usize = 4;
     const NUM_POINTS: usize = 27;
     const POINT_BLOB_LEN: usize = NUM_POINTS * 64;
     const EXPECTED_LEN: usize = HEADER_WORDS * 8 + POINT_BLOB_LEN;
     if bytes.len() as usize != EXPECTED_LEN {
-        return None;
+        return Err(crate::verifier::VkLoadError::WrongLength);
     }
 
     fn read_u64(bytes: &Bytes, idx: &mut u32) -> u64 {
@@ -198,10 +201,10 @@ pub fn load_vk_from_bytes(env: &Env, bytes: &Bytes) -> Option<VerificationKey> {
 
     // Validate structural parameters immediately after parsing.
     if log_circuit_size == 0 || log_circuit_size > CONST_PROOF_SIZE_LOG_N as u64 {
-        return None;
+        return Err(crate::verifier::VkLoadError::InvalidParameters);
     }
     if public_inputs_size < PAIRING_POINTS_SIZE as u64 {
-        return None;
+        return Err(crate::verifier::VkLoadError::InvalidParameters);
     }
 
     // One contiguous read for all G1 points (27 × 64 bytes), then parse in layout order.
@@ -215,39 +218,38 @@ pub fn load_vk_from_bytes(env: &Env, bytes: &Bytes) -> Option<VerificationKey> {
     });
     debug_assert_eq!(idx as usize, EXPECTED_LEN);
 
-    let mut it = pts.into_iter();
-    Some(VerificationKey {
+    Ok(VerificationKey {
         circuit_size,
         log_circuit_size,
         public_inputs_size,
         pub_inputs_offset,
-        qm: it.next()?,
-        qc: it.next()?,
-        ql: it.next()?,
-        qr: it.next()?,
-        qo: it.next()?,
-        q4: it.next()?,
-        q_lookup: it.next()?,
-        q_arith: it.next()?,
-        q_delta_range: it.next()?,
-        q_elliptic: it.next()?,
-        q_aux: it.next()?,
-        q_poseidon2_external: it.next()?,
-        q_poseidon2_internal: it.next()?,
-        s1: it.next()?,
-        s2: it.next()?,
-        s3: it.next()?,
-        s4: it.next()?,
-        id1: it.next()?,
-        id2: it.next()?,
-        id3: it.next()?,
-        id4: it.next()?,
-        t1: it.next()?,
-        t2: it.next()?,
-        t3: it.next()?,
-        t4: it.next()?,
-        lagrange_first: it.next()?,
-        lagrange_last: it.next()?,
+        qm: pts[0].clone(),
+        qc: pts[1].clone(),
+        ql: pts[2].clone(),
+        qr: pts[3].clone(),
+        qo: pts[4].clone(),
+        q4: pts[5].clone(),
+        q_lookup: pts[6].clone(),
+        q_arith: pts[7].clone(),
+        q_delta_range: pts[8].clone(),
+        q_elliptic: pts[9].clone(),
+        q_aux: pts[10].clone(),
+        q_poseidon2_external: pts[11].clone(),
+        q_poseidon2_internal: pts[12].clone(),
+        s1: pts[13].clone(),
+        s2: pts[14].clone(),
+        s3: pts[15].clone(),
+        s4: pts[16].clone(),
+        id1: pts[17].clone(),
+        id2: pts[18].clone(),
+        id3: pts[19].clone(),
+        id4: pts[20].clone(),
+        t1: pts[21].clone(),
+        t2: pts[22].clone(),
+        t3: pts[23].clone(),
+        t4: pts[24].clone(),
+        lagrange_first: pts[25].clone(),
+        lagrange_last: pts[26].clone(),
     })
 }
 
@@ -296,7 +298,10 @@ mod tests {
 
         // Too short
         let bytes_short = Bytes::from_slice(&env, &[0u8; 10]);
-        assert!(load_vk_from_bytes(&env, &bytes_short).is_none());
+        assert_eq!(
+            load_vk_from_bytes(&env, &bytes_short).unwrap_err(),
+            crate::verifier::VkLoadError::WrongLength
+        );
 
         // Too long
         const HEADER_WORDS: usize = 4;
@@ -305,7 +310,10 @@ mod tests {
 
         let long_bytes = [0u8; EXPECTED_LEN + 1];
         let bytes_long = Bytes::from_slice(&env, &long_bytes);
-        assert!(load_vk_from_bytes(&env, &bytes_long).is_none());
+        assert_eq!(
+            load_vk_from_bytes(&env, &bytes_long).unwrap_err(),
+            crate::verifier::VkLoadError::WrongLength
+        );
 
         // Correct length but log_circuit_size = 0
         let mut zero_log = [0u8; EXPECTED_LEN];
@@ -313,7 +321,10 @@ mod tests {
         zero_log[7] = 1;
         // log_circuit_size = 0 (already zero at offset 8..16)
         let bytes_zero_log = Bytes::from_slice(&env, &zero_log);
-        assert!(load_vk_from_bytes(&env, &bytes_zero_log).is_none());
+        assert_eq!(
+            load_vk_from_bytes(&env, &bytes_zero_log).unwrap_err(),
+            crate::verifier::VkLoadError::InvalidParameters
+        );
 
         // Correct length but log_circuit_size > CONST_PROOF_SIZE_LOG_N
         let mut large_log = [0u8; EXPECTED_LEN];
@@ -322,6 +333,9 @@ mod tests {
         // log_circuit_size = 29 (big-endian at offset 8..16)
         large_log[15] = 29;
         let bytes_large_log = Bytes::from_slice(&env, &large_log);
-        assert!(load_vk_from_bytes(&env, &bytes_large_log).is_none());
+        assert_eq!(
+            load_vk_from_bytes(&env, &bytes_large_log).unwrap_err(),
+            crate::verifier::VkLoadError::InvalidParameters
+        );
     }
 }

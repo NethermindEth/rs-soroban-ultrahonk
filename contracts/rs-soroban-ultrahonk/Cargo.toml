@@ -14,3 +14,4 @@ ultrahonk_soroban_verifier = { path = "../../crates/ultrahonk-soroban-verifier",
 # Enable test helpers for local unit tests
 soroban-sdk = { workspace = true, features = ["testutils", "alloc"] }
 soroban-env-host = "26.1.3"
+ultrahonk-test-utils = { path = "../../crates/test-utils" }

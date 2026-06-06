@@ -339,6 +339,74 @@ fn withdraw_rejects_invalid_public_inputs() {
     assert!(!used, "nullifier should remain unused after invalid inputs");
 }
 
+/// Verifies that public inputs shorter than 64 bytes are rejected with InvalidPublicInputs.
+#[test]
+#[cfg(feature = "testutils")]
+fn withdraw_rejects_short_public_inputs() {
+    let _guard = verify_lock().lock().unwrap();
+    let env = Env::default();
+    env.cost_estimate().budget().reset_unlimited();
+    let _ = env.host().set_diagnostic_level(DiagnosticLevel::None);
+
+    let vk_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/vk");
+    let proof_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/proof");
+
+    let vk_bytes: Bytes = Bytes::from_slice(&env, vk_bin);
+    let verifier_id: Address = register_verifier(&env, &vk_bytes);
+    let mixer_id: Address = register_mixer(&env, verifier_id.clone());
+
+    let commitment = BytesN::from_array(&env, &[0x22; 32]);
+    env.as_contract(&mixer_id, || {
+        MixerContract::deposit(env.clone(), commitment)
+    })
+    .unwrap();
+
+    assert_eq!(proof_bin.len(), PROOF_BYTES);
+    let proof_bytes: Bytes = Bytes::from_slice(&env, proof_bin);
+    let short_inputs = Bytes::from_slice(&env, &[0u8; 63]);
+
+    let err = env
+        .as_contract(&mixer_id, || {
+            MixerContract::withdraw(env.clone(), short_inputs.clone(), proof_bytes.clone())
+        })
+        .expect_err("expected InvalidPublicInputs");
+    assert_eq!(err as u32, MixerError::InvalidPublicInputs as u32);
+}
+
+/// Verifies that public inputs longer than 64 bytes are rejected with InvalidPublicInputs.
+#[test]
+#[cfg(feature = "testutils")]
+fn withdraw_rejects_long_public_inputs() {
+    let _guard = verify_lock().lock().unwrap();
+    let env = Env::default();
+    env.cost_estimate().budget().reset_unlimited();
+    let _ = env.host().set_diagnostic_level(DiagnosticLevel::None);
+
+    let vk_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/vk");
+    let proof_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/proof");
+
+    let vk_bytes: Bytes = Bytes::from_slice(&env, vk_bin);
+    let verifier_id: Address = register_verifier(&env, &vk_bytes);
+    let mixer_id: Address = register_mixer(&env, verifier_id.clone());
+
+    let commitment = BytesN::from_array(&env, &[0x22; 32]);
+    env.as_contract(&mixer_id, || {
+        MixerContract::deposit(env.clone(), commitment)
+    })
+    .unwrap();
+
+    assert_eq!(proof_bin.len(), PROOF_BYTES);
+    let proof_bytes: Bytes = Bytes::from_slice(&env, proof_bin);
+    let long_inputs = Bytes::from_slice(&env, &[0u8; 65]);
+
+    let err = env
+        .as_contract(&mixer_id, || {
+            MixerContract::withdraw(env.clone(), long_inputs.clone(), proof_bytes.clone())
+        })
+        .expect_err("expected InvalidPublicInputs");
+    assert_eq!(err as u32, MixerError::InvalidPublicInputs as u32);
+}
+
 /// Confirms withdraw fails if the proof root differs from the stored root and does not consume the nullifier.
 #[test]
 #[cfg(feature = "testutils")]

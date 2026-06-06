@@ -36,7 +36,8 @@ Verifies a proof that the caller knows the preimage for the given public hash.
 
 **Errors:**
 - `VkNotSet` — contract was not initialized with a VK
-- `VkParseError` — VK deserialization failed (wrong format or version)
+- `VkInvalidLength` — VK byte slice does not match the expected exact length
+- `VkInvalidParameters` — VK header contains out-of-range structural parameters
 - `ProofParseError` — proof length does not match `PROOF_BYTES` (14,592)
 - `VerificationFailed` — proof is invalid for the given public inputs
 

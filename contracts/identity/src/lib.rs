@@ -1,6 +1,6 @@
 #![no_std]
 use soroban_sdk::{contract, contracterror, contractimpl, symbol_short, Bytes, Env, Symbol};
-use ultrahonk_soroban_verifier::{UltraHonkVerifier, PROOF_BYTES};
+use ultrahonk_soroban_verifier::{UltraHonkVerifier, VkLoadError, PROOF_BYTES};
 
 /// Identity verification contract.
 ///
@@ -18,11 +18,18 @@ pub struct IdentityContract;
 #[repr(u32)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Error {
-    VkParseError = 1,
-    ProofParseError = 2,
-    VerificationFailed = 3,
-    VkNotSet = 4,
-    AlreadyInitialized = 5,
+    /// VK byte slice does not match the expected exact length.
+    VkInvalidLength = 1,
+    /// VK header contains out-of-range structural parameters.
+    VkInvalidParameters = 2,
+    /// Proof byte slice does not match the expected exact length.
+    ProofParseError = 3,
+    /// Cryptographic verification failed.
+    VerificationFailed = 4,
+    /// No VK has been stored in contract instance storage.
+    VkNotSet = 5,
+    /// Constructor has already been called; VK is immutable.
+    AlreadyInitialized = 6,
 }
 
 #[contractimpl]
@@ -37,7 +44,10 @@ impl IdentityContract {
         }
         // Validate VK bytes by attempting to parse them before storing.
         // This rejects empty, truncated, or structurally invalid VKs at deploy time.
-        let _ = UltraHonkVerifier::new(&env, &vk_bytes).map_err(|_| Error::VkParseError)?;
+        let _ = UltraHonkVerifier::new(&env, &vk_bytes).map_err(|e| match e {
+            VkLoadError::WrongLength => Error::VkInvalidLength,
+            VkLoadError::InvalidParameters => Error::VkInvalidParameters,
+        })?;
         env.storage().instance().set(&Self::key_vk(), &vk_bytes);
         Ok(())
     }
@@ -61,7 +71,10 @@ impl IdentityContract {
             .get(&Self::key_vk())
             .ok_or(Error::VkNotSet)?;
 
-        let verifier = UltraHonkVerifier::new(&env, &vk_bytes).map_err(|_| Error::VkParseError)?;
+        let verifier = UltraHonkVerifier::new(&env, &vk_bytes).map_err(|e| match e {
+            VkLoadError::WrongLength => Error::VkInvalidLength,
+            VkLoadError::InvalidParameters => Error::VkInvalidParameters,
+        })?;
 
         verifier
             .verify(&env, &proof_bytes, &public_inputs)

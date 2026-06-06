@@ -19,6 +19,20 @@ use crate::{
 };
 use soroban_sdk::{Bytes, Env};
 
+/// Error type describing why a verification key could not be loaded from bytes.
+///
+/// Intentionally minimal: the VK is public data, so callers do not need a
+/// fine-grained oracle. The two variants separate deployer mistakes (wrong
+/// byte count) from invalid structural parameters that could indicate
+/// corruption or an adversarially crafted VK.
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum VkLoadError {
+    /// Byte slice length does not match the exact expected VK size (220 bytes).
+    WrongLength,
+    /// Header parsed successfully but contains out-of-range values.
+    InvalidParameters,
+}
+
 /// Error type describing the specific reason verification failed.
 #[derive(Debug)]
 pub enum VerifyError {
@@ -40,10 +54,8 @@ impl UltraHonkVerifier {
         }
     }
 
-    pub fn new(env: &Env, vk_bytes: &Bytes) -> Result<Self, VerifyError> {
-        load_vk_from_bytes(env, vk_bytes)
-            .map(|vk| Self::new_with_vk(env, vk))
-            .ok_or(VerifyError::InvalidInput("vk parse error"))
+    pub fn new(env: &Env, vk_bytes: &Bytes) -> Result<Self, VkLoadError> {
+        load_vk_from_bytes(env, vk_bytes).map(|vk| Self::new_with_vk(env, vk))
     }
 
     /// Expose a reference to the parsed VK for debugging/inspection.
