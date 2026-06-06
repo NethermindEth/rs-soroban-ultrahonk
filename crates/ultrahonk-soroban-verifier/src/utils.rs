@@ -45,7 +45,8 @@ const _: () = assert!(
 ///
 /// BB: `field_conversion::calc_num_bn254_frs` + native serialization
 #[inline]
-pub fn coord_to_halves_be(coord: &[u8]) -> ([u8; 32], [u8; 32]) {
+#[allow(dead_code)]
+pub(crate) fn coord_to_halves_be(coord: &[u8]) -> ([u8; 32], [u8; 32]) {
     let mut low = [0u8; 32];
     let mut high = [0u8; 32];
     low[15..].copy_from_slice(&coord[15..]); // 17 bytes
@@ -54,7 +55,7 @@ pub fn coord_to_halves_be(coord: &[u8]) -> ([u8; 32], [u8; 32]) {
 }
 
 #[inline]
-fn read_bytes<const N: usize>(bytes: &Bytes, idx: &mut u32) -> [u8; N] {
+pub(crate) fn read_bytes<const N: usize>(bytes: &Bytes, idx: &mut u32) -> [u8; N] {
     let mut out = [0u8; N];
     let end = *idx + N as u32;
     bytes.slice(*idx..end).copy_into_slice(&mut out);
@@ -63,7 +64,7 @@ fn read_bytes<const N: usize>(bytes: &Bytes, idx: &mut u32) -> [u8; N] {
 }
 
 #[inline]
-fn combine_limbs(lo: &[u8; 32], hi: &[u8; 32]) -> [u8; 32] {
+pub(crate) fn combine_limbs(lo: &[u8; 32], hi: &[u8; 32]) -> [u8; 32] {
     let mut out = [0u8; 32];
     out[..15].copy_from_slice(&hi[17..]);
     out[15..].copy_from_slice(&lo[15..]);
@@ -71,13 +72,13 @@ fn combine_limbs(lo: &[u8; 32], hi: &[u8; 32]) -> [u8; 32] {
 }
 
 #[inline]
-fn fr_word32(env: &Env, blob: &[u8], word_idx: usize) -> Fr {
+pub(crate) fn fr_word32(env: &Env, blob: &[u8], word_idx: usize) -> Fr {
     let o = word_idx * 32;
     Fr::from_array(env, blob[o..o + 32].try_into().expect("fr32"))
 }
 
 #[inline]
-fn g1_from_proof_chunk128(env: &Env, b: &[u8; 128]) -> G1Point {
+pub(crate) fn g1_from_proof_chunk128(env: &Env, b: &[u8; 128]) -> G1Point {
     let x = combine_limbs(
         b[0..32].try_into().expect("x_lo"),
         b[32..64].try_into().expect("x_hi"),
@@ -90,7 +91,7 @@ fn g1_from_proof_chunk128(env: &Env, b: &[u8; 128]) -> G1Point {
 }
 
 #[inline]
-fn g1_from_proof_blob_at(env: &Env, blob: &[u8], point_idx: usize) -> G1Point {
+pub(crate) fn g1_from_proof_blob_at(env: &Env, blob: &[u8], point_idx: usize) -> G1Point {
     let o = point_idx * 128;
     g1_from_proof_chunk128(env, blob[o..o + 128].try_into().expect("g1_128"))
 }
@@ -204,6 +205,12 @@ pub fn load_vk_from_bytes(
         return Err(crate::verifier::VkLoadError::InvalidParameters);
     }
     if public_inputs_size < PAIRING_POINTS_SIZE as u64 {
+        return Err(crate::verifier::VkLoadError::InvalidParameters);
+    }
+    if circuit_size != (1u64 << log_circuit_size) {
+        return Err(crate::verifier::VkLoadError::InvalidParameters);
+    }
+    if pub_inputs_offset > circuit_size {
         return Err(crate::verifier::VkLoadError::InvalidParameters);
     }
 
@@ -335,6 +342,38 @@ mod tests {
         let bytes_large_log = Bytes::from_slice(&env, &large_log);
         assert_eq!(
             load_vk_from_bytes(&env, &bytes_large_log).unwrap_err(),
+            crate::verifier::VkLoadError::InvalidParameters
+        );
+
+        // circuit_size does not equal 1 << log_circuit_size
+        let mut mismatch_cs = [0u8; EXPECTED_LEN];
+        // circuit_size = 2 (big-endian at offset 0..8)
+        mismatch_cs[7] = 2;
+        // log_circuit_size = 10 (big-endian at offset 8..16)
+        mismatch_cs[15] = 10;
+        // public_inputs_size = 16 to pass the minimum check
+        mismatch_cs[23] = 16;
+        let bytes_mismatch_cs = Bytes::from_slice(&env, &mismatch_cs);
+        assert_eq!(
+            load_vk_from_bytes(&env, &bytes_mismatch_cs).unwrap_err(),
+            crate::verifier::VkLoadError::InvalidParameters
+        );
+
+        // pub_inputs_offset > circuit_size
+        let mut bad_offset = [0u8; EXPECTED_LEN];
+        // circuit_size = 1 << 10 = 1024
+        bad_offset[5] = 0x04;
+        // log_circuit_size = 10
+        bad_offset[15] = 10;
+        // public_inputs_size = 16
+        bad_offset[23] = 16;
+        // pub_inputs_offset = u64::MAX
+        for b in &mut bad_offset[24..32] {
+            *b = 0xff;
+        }
+        let bytes_bad_offset = Bytes::from_slice(&env, &bad_offset);
+        assert_eq!(
+            load_vk_from_bytes(&env, &bytes_bad_offset).unwrap_err(),
             crate::verifier::VkLoadError::InvalidParameters
         );
     }

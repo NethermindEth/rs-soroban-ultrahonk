@@ -450,3 +450,136 @@ fn mutated_proof_many_pubs_fails() {
         "mutated proof must not verify (many_pubs)"
     );
 }
+
+// =========================================================================
+// 8. Public-input edge cases
+// =========================================================================
+
+#[test]
+fn public_inputs_not_32_byte_aligned_fails() {
+    let env = test_env();
+    let f = Fixture::load("simple_circuit");
+    let proof = Bytes::from_slice(&env, &f.proof);
+    let vk = Bytes::from_slice(&env, &f.vk);
+    let mut bad_pi = f.public_inputs.clone();
+    bad_pi.push(0x42);
+    let pi = Bytes::from_slice(&env, &bad_pi);
+
+    let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
+    assert!(
+        v.verify(&env, &proof, &pi).is_err(),
+        "non-32-byte-aligned public inputs must fail"
+    );
+}
+
+#[test]
+fn wrong_number_of_public_inputs_fails() {
+    let env = test_env();
+    let f = Fixture::load("simple_circuit");
+    let proof = Bytes::from_slice(&env, &f.proof);
+    let vk = Bytes::from_slice(&env, &f.vk);
+    // Duplicate the single 32-byte public input to make it look like 2 inputs
+    let mut bad_pi = f.public_inputs.clone();
+    bad_pi.extend_from_slice(&f.public_inputs);
+    let pi = Bytes::from_slice(&env, &bad_pi);
+
+    let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
+    assert!(
+        v.verify(&env, &proof, &pi).is_err(),
+        "wrong number of public inputs must fail"
+    );
+}
+
+#[test]
+fn empty_public_inputs_when_expected_nonzero_fails() {
+    let env = test_env();
+    let f = Fixture::load("simple_circuit");
+    let proof = Bytes::from_slice(&env, &f.proof);
+    let vk = Bytes::from_slice(&env, &f.vk);
+    let pi = Bytes::new(&env);
+
+    let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
+    assert!(
+        v.verify(&env, &proof, &pi).is_err(),
+        "empty public inputs when circuit expects nonzero must fail"
+    );
+}
+
+// =========================================================================
+// 9. VK structural edge cases
+// =========================================================================
+
+#[test]
+fn vk_pub_inputs_offset_too_large_returns_invalid_parameters() {
+    let env = test_env();
+    let f = Fixture::load("simple_circuit");
+    let mut bad_vk = f.vk.clone();
+    // pub_inputs_offset at bytes 24..32 -> u64::MAX
+    for b in &mut bad_vk[24..32] {
+        *b = 0xff;
+    }
+    let vk = Bytes::from_slice(&env, &bad_vk);
+    assert!(matches!(
+        UltraHonkVerifier::new(&env, &vk),
+        Err(VkLoadError::InvalidParameters)
+    ));
+}
+
+#[test]
+fn vk_circuit_size_mismatch_log_returns_invalid_parameters() {
+    let env = test_env();
+    let f = Fixture::load("simple_circuit");
+    let mut bad_vk = f.vk.clone();
+    // circuit_size at bytes 0..8 -> 2
+    for b in &mut bad_vk[0..8] {
+        *b = 0;
+    }
+    bad_vk[7] = 2;
+    // log_circuit_size at bytes 8..16 -> 10 (2^10 = 1024 != 2)
+    for b in &mut bad_vk[8..16] {
+        *b = 0;
+    }
+    bad_vk[15] = 10;
+    let vk = Bytes::from_slice(&env, &bad_vk);
+    assert!(matches!(
+        UltraHonkVerifier::new(&env, &vk),
+        Err(VkLoadError::InvalidParameters)
+    ));
+}
+
+// =========================================================================
+// 10. Cross-circuit confusion
+// =========================================================================
+
+#[test]
+fn cross_circuit_proof_and_vk_fails() {
+    let f_a = Fixture::load("simple_circuit");
+    let f_b = Fixture::load("fib_chain");
+
+    let result = std::panic::catch_unwind(|| {
+        let env = test_env();
+        let proof = Bytes::from_slice(&env, &f_a.proof);
+        let vk = Bytes::from_slice(&env, &f_b.vk);
+        let pi = Bytes::from_slice(&env, &f_a.public_inputs);
+        let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
+        v.verify(&env, &proof, &pi)
+    });
+    // If it panics (e.g. "point not on curve"), that's also a rejection — pass.
+    if let Err(panic) = result {
+        let msg = panic
+            .downcast_ref::<String>()
+            .map(|s| s.as_str())
+            .unwrap_or("");
+        assert!(
+            msg.contains("not on curve")
+                || msg.contains("HostError")
+                || msg.contains("InvalidInput"),
+            "unexpected panic: {msg}"
+        );
+    } else {
+        assert!(
+            result.unwrap().is_err(),
+            "cross-circuit proof+VK must not verify"
+        );
+    }
+}
