@@ -22,6 +22,7 @@ pub enum MixerError {
     VerifierNotSet = 5,
     TreeFull = 6,
     RootNotSet = 7,
+    AlreadyInitialized = 8,
 }
 
 #[contractevent(topics = ["deposit"], data_format = "map")]
@@ -115,6 +116,9 @@ fn verify_proof(
 impl MixerContract {
     /// Initialize the contract with the verifier address.
     pub fn __constructor(env: Env, verifier: Address) -> Result<(), MixerError> {
+        if env.storage().instance().has(&key_verifier()) {
+            return Err(MixerError::AlreadyInitialized);
+        }
         env.storage().instance().set(&key_verifier(), &verifier);
         Ok(())
     }

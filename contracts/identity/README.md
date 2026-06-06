@@ -40,6 +40,13 @@ Verifies a proof that the caller knows the preimage for the given public hash.
 - `ProofParseError` — proof length does not match `PROOF_BYTES` (14,592)
 - `VerificationFailed` — proof is invalid for the given public inputs
 
+## Trust Model
+
+- **Deployer responsibility:** The deployer must supply the correct VK at construction time. The VK is immutable after deployment — there is no admin key or governance mechanism to change it.
+- **One-time initialization:** The VK is set exactly once in the constructor and cannot be changed.
+- **No post-deploy rotation:** If the circuit changes, the contract must be redeployed with a new VK.
+- **User verification:** Callers should verify the stored VK (via `vk_bytes()`) matches the expected circuit before trusting proofs.
+
 ## Architecture
 
 ```
