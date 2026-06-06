@@ -9,8 +9,11 @@ use ultrahonk_soroban_verifier::{UltraHonkVerifier, VkLoadError, PROOF_BYTES};
 /// supplying the correct VK. There is no admin key, governance mechanism, or
 /// upgrade path to modify the VK after deployment.
 ///
-/// Callers should verify the stored VK (via `vk_bytes`) matches the expected
-/// circuit before trusting proofs.
+/// **Trust model:** This wrapper has no governor, no deployer auth, and no
+/// access controls. Anyone can deploy an instance with an arbitrary VK.
+/// Callers MUST independently verify the stored VK (via `vk_bytes`) against
+/// a known-good circuit before trusting any proofs verified by this contract.
+/// Do not rely on the contract address alone as a trust anchor.
 #[contract]
 pub struct UltraHonkVerifierContract;
 
