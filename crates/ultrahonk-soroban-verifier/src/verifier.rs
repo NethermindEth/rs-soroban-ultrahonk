@@ -126,7 +126,8 @@ impl UltraHonkVerifier {
         verify_sumcheck(env, &proof, &t, &self.vk).map_err(|_| VerifyError::SumcheckFailed)?;
 
         // 6) Shplonk
-        verify_shplemini(&self.env, &proof, &self.vk, &t).map_err(|_| VerifyError::ShplonkFailed)?;
+        verify_shplemini(&self.env, &proof, &self.vk, &t)
+            .map_err(|_| VerifyError::ShplonkFailed)?;
 
         Ok(())
     }
