@@ -1,19 +1,16 @@
 #![no_std]
-use soroban_sdk::{
-    contract, contracterror, contractimpl, symbol_short, Address, Bytes, Env, Symbol,
-};
+use soroban_sdk::{contract, contracterror, contractimpl, symbol_short, Bytes, Env, Symbol};
 use ultrahonk_soroban_verifier::{UltraHonkVerifier, VkLoadError, PROOF_BYTES};
 
 /// Identity verification contract.
 ///
 /// The verification key (VK) is immutable: it is set once at deployment time
-/// and cannot be changed afterwards. A governor address must explicitly
-/// authorize construction and is recorded on-chain for auditability. There is
-/// no upgrade path to modify the VK after deployment.
+/// and cannot be changed afterwards. The deployer is solely responsible for
+/// supplying the correct VK. There is no admin key, governance mechanism, or
+/// upgrade path to modify the VK after deployment.
 ///
 /// Callers should verify the stored VK (via `vk_bytes`) matches the expected
-/// circuit before trusting proofs, and may also inspect the recorded governor
-/// via `governor()`.
+/// circuit before trusting proofs.
 #[contract]
 pub struct IdentityContract;
 
@@ -41,31 +38,18 @@ impl IdentityContract {
         symbol_short!("vk")
     }
 
-    fn key_governor() -> Symbol {
-        symbol_short!("gov")
-    }
-
-    pub fn __constructor(env: Env, governor: Address, vk_bytes: Bytes) -> Result<(), Error> {
+    pub fn __constructor(env: Env, vk_bytes: Bytes) -> Result<(), Error> {
         if env.storage().instance().has(&Self::key_vk()) {
             return Err(Error::AlreadyInitialized);
         }
-        governor.require_auth();
         // Validate VK bytes by attempting to parse them before storing.
         // This rejects empty, truncated, or structurally invalid VKs at deploy time.
         let _ = UltraHonkVerifier::new(&env, &vk_bytes).map_err(|e| match e {
             VkLoadError::WrongLength => Error::VkInvalidLength,
             VkLoadError::InvalidParameters => Error::VkInvalidParameters,
         })?;
-        env.storage()
-            .instance()
-            .set(&Self::key_governor(), &governor);
         env.storage().instance().set(&Self::key_vk(), &vk_bytes);
         Ok(())
-    }
-
-    /// Return the recorded governor that authorized contract initialization.
-    pub fn governor(env: Env) -> Option<Address> {
-        env.storage().instance().get(&Self::key_governor())
     }
 
     /// Return the stored verification key bytes for auditability.

@@ -21,10 +21,10 @@ fn main(preimage: Field, hash: pub Field) {
 ### Constructor
 
 ```rust
-fn __constructor(env: Env, governor: Address, vk_bytes: Bytes)
+fn __constructor(env: Env, vk_bytes: Bytes)
 ```
 
-Stores the UltraHonk verification key in contract instance storage after the `governor` address authorizes initialization. This VK is tied to the specific Noir circuit and must be generated with the same `bb` version used to produce proofs.
+Stores the UltraHonk verification key in contract instance storage. This VK is tied to the specific Noir circuit and must be generated with the same `bb` version used to produce proofs.
 
 ### Methods
 
@@ -43,26 +43,25 @@ Verifies a proof that the caller knows the preimage for the given public hash.
 
 ## Trust Model
 
-- **Governor-authorized initialization:** The constructor requires the designated `governor` address to authorize deployment, and that governor address is recorded on-chain.
-- **Governor responsibility:** The governor must supply the correct VK at construction time. The VK is immutable after deployment.
+- **Deployer responsibility:** The deployer must supply the correct VK at construction time. The VK is immutable after deployment — there is no admin key or governance mechanism to change it.
 - **One-time initialization:** The VK is set exactly once in the constructor and cannot be changed.
-- **No post-deploy rotation:** There is no method to rotate the VK. If the circuit changes, the contract must be redeployed with a new VK.
+- **No post-deploy rotation:** If the circuit changes, the contract must be redeployed with a new VK.
 - **User verification:** Callers should verify the stored VK (via `vk_bytes()`) matches the expected circuit before trusting proofs.
 
 ## Architecture
 
 ```
-┌─────────────────┐      ┌───────────────────────┐      ┌──────────────────┐
-│   Prover (off-  │      │   Identity Contract   │      │  Verifier Crate  │
-│   chain)        │      │   (Soroban guest)     │      │  (embedded)      │
-│                 │      │                       │      │                  │
-│  nargo execute  │────▶ │  prove_identity()     │────▶ │  UltraHonk       │
-│  bb prove       │      │  - loads VK           │      │  Verifier        │
-│                 │      │  - deserializes       │      │                  │
-│                 │      │    proof + inputs     │      │  - host BN254    │
-│                 │      │  - delegates to       │      │    primitives    │
-│                 │      │    verifier           │      │                  │
-└─────────────────┘      └───────────────────────┘      └──────────────────┘
+┌─────────────────┐     ┌──────────────────────┐     ┌─────────────────┐
+│   Prover (off-  │     │   Identity Contract   │     │  Verifier Crate │
+│   chain)        │     │   (Soroban guest)     │     │  (embedded)     │
+│                 │     │                      │     │                 │
+│  nargo execute  │────▶│  prove_identity()    │────▶│  UltraHonk      │
+│  bb prove       │     │  - loads VK          │     │  Verifier       │
+│                 │     │  - deserializes      │     │                 │
+│                 │     │    proof + inputs    │     │  - host BN254    │
+│                 │     │  - delegates to      │     │    primitives    │
+│                 │     │    verifier          │     │                 │
+└─────────────────┘     └──────────────────────┘     └─────────────────┘
 ```
 
 The contract itself is ~24KB WASM. Verification costs ~81M CPU instructions on Soroban Protocol 26.
@@ -92,7 +91,7 @@ just fund           # fund alice account
 ./scripts/run_identity_e2e.sh testnet
 ```
 
-The script deploys the contract with the source account as the constructor `governor` and the VK as a constructor argument.
+The script deploys the contract with the VK as a constructor argument.
 
 ### 3. Verify on-chain
 
