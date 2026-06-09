@@ -88,9 +88,9 @@ fn compute_next_target_sum(
     // Short-circuit: if round_challenge equals any domain point, return the
     // corresponding univariate value directly. This matches BB behavior and
     // avoids a division-by-zero in the barycentric formula.
-    for i in 0..BATCHED_RELATION_PARTIAL_LENGTH {
-        if round_challenge == point_indices[i] {
-            return Ok(round_univariate[i].clone());
+    for (point, univariate) in point_indices.iter().zip(round_univariate.iter()) {
+        if &round_challenge == point {
+            return Ok(univariate.clone());
         }
     }
 
@@ -111,8 +111,8 @@ fn compute_next_target_sum(
 
     // Σ u_i * inv_denom_i
     let mut acc = zero.clone();
-    for i in 0..BATCHED_RELATION_PARTIAL_LENGTH {
-        acc = acc + (&round_univariate[i] * &inv_denoms[i]);
+    for (univariate, inv_denom) in round_univariate.iter().zip(inv_denoms.iter()) {
+        acc = acc + (univariate * inv_denom);
     }
 
     Ok(b_poly * acc)
