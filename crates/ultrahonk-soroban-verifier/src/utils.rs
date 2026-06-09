@@ -13,7 +13,7 @@ use crate::types::{
     G1Point, Proof, VerificationKey, BATCHED_RELATION_PARTIAL_LENGTH, CONST_PROOF_SIZE_LOG_N,
     NUMBER_OF_ENTITIES, PAIRING_POINTS_SIZE,
 };
-use crate::PROOF_BYTES;
+use crate::{VkLoadError, PROOF_BYTES};
 use core::array;
 use soroban_sdk::{Bytes, Env};
 
@@ -37,22 +37,6 @@ const _: () = assert!(
         + FINAL_TWO_G1_BYTES
         == PROOF_BYTES
 );
-
-/// Split a 32-byte big-endian field element into (low136, high≤118) limbs.
-///
-/// This is the inverse of `combine_limbs`.  Used when serialising G1 coordinates
-/// into the transcript buffer.
-///
-/// BB: `field_conversion::calc_num_bn254_frs` + native serialization
-#[inline]
-#[allow(dead_code)]
-pub(crate) fn coord_to_halves_be(coord: &[u8]) -> ([u8; 32], [u8; 32]) {
-    let mut low = [0u8; 32];
-    let mut high = [0u8; 32];
-    low[15..].copy_from_slice(&coord[15..]); // 17 bytes
-    high[17..].copy_from_slice(&coord[..15]); // 15 bytes
-    (low, high)
-}
 
 #[inline]
 pub(crate) fn read_bytes<const N: usize>(bytes: &Bytes, idx: &mut u32) -> [u8; N] {
@@ -178,16 +162,13 @@ pub fn load_proof(env: &Env, proof_bytes: &Bytes) -> Result<Proof, &'static str>
 /// The point order matches `PrecomputedEntities` in BB.
 ///
 /// BB: `flavor/ultra_flavor.hpp::VerificationKey_`
-pub fn load_vk_from_bytes(
-    env: &Env,
-    bytes: &Bytes,
-) -> Result<VerificationKey, crate::verifier::VkLoadError> {
+pub fn load_vk_from_bytes(env: &Env, bytes: &Bytes) -> Result<VerificationKey, VkLoadError> {
     const HEADER_WORDS: usize = 4;
     const NUM_POINTS: usize = 27;
     const POINT_BLOB_LEN: usize = NUM_POINTS * 64;
     const EXPECTED_LEN: usize = HEADER_WORDS * 8 + POINT_BLOB_LEN;
     if bytes.len() as usize != EXPECTED_LEN {
-        return Err(crate::verifier::VkLoadError::WrongLength);
+        return Err(VkLoadError::WrongLength);
     }
 
     fn read_u64(bytes: &Bytes, idx: &mut u32) -> u64 {
@@ -201,17 +182,20 @@ pub fn load_vk_from_bytes(
     let pub_inputs_offset = read_u64(bytes, &mut idx);
 
     // Validate structural parameters immediately after parsing.
-    if log_circuit_size == 0 || log_circuit_size > CONST_PROOF_SIZE_LOG_N as u64 {
-        return Err(crate::verifier::VkLoadError::InvalidParameters);
+    if log_circuit_size == 0
+        || log_circuit_size
+            > u64::try_from(CONST_PROOF_SIZE_LOG_N).map_err(|_| VkLoadError::InvalidParameters)?
+    {
+        return Err(VkLoadError::InvalidParameters);
     }
     if public_inputs_size < PAIRING_POINTS_SIZE as u64 {
-        return Err(crate::verifier::VkLoadError::InvalidParameters);
+        return Err(VkLoadError::InvalidParameters);
     }
     if circuit_size != (1u64 << log_circuit_size) {
-        return Err(crate::verifier::VkLoadError::InvalidParameters);
+        return Err(VkLoadError::InvalidParameters);
     }
     if pub_inputs_offset > circuit_size {
-        return Err(crate::verifier::VkLoadError::InvalidParameters);
+        return Err(VkLoadError::InvalidParameters);
     }
 
     // One contiguous read for all G1 points (27 × 64 bytes), then parse in layout order.
@@ -265,6 +249,20 @@ mod tests {
     use super::*;
     use soroban_sdk::Env;
 
+    /// Split a 32-byte big-endian field element into (low136, high≤118) limbs.
+    ///
+    /// This is the inverse of `combine_limbs`.  Used when serialising G1 coordinates
+    /// into the transcript buffer.
+    ///
+    /// BB: `field_conversion::calc_num_bn254_frs` + native serialization
+    pub(crate) fn coord_to_halves_be(coord: &[u8]) -> ([u8; 32], [u8; 32]) {
+        let mut low = [0u8; 32];
+        let mut high = [0u8; 32];
+        low[15..].copy_from_slice(&coord[15..]); // 17 bytes
+        high[17..].copy_from_slice(&coord[..15]); // 15 bytes
+        (low, high)
+    }
+
     #[test]
     fn test_coord_limbs_round_trip() {
         // Create a known 32-byte array
@@ -307,7 +305,7 @@ mod tests {
         let bytes_short = Bytes::from_slice(&env, &[0u8; 10]);
         assert_eq!(
             load_vk_from_bytes(&env, &bytes_short).unwrap_err(),
-            crate::verifier::VkLoadError::WrongLength
+            VkLoadError::WrongLength
         );
 
         // Too long
@@ -319,7 +317,7 @@ mod tests {
         let bytes_long = Bytes::from_slice(&env, &long_bytes);
         assert_eq!(
             load_vk_from_bytes(&env, &bytes_long).unwrap_err(),
-            crate::verifier::VkLoadError::WrongLength
+            VkLoadError::WrongLength
         );
 
         // Correct length but log_circuit_size = 0
@@ -330,7 +328,7 @@ mod tests {
         let bytes_zero_log = Bytes::from_slice(&env, &zero_log);
         assert_eq!(
             load_vk_from_bytes(&env, &bytes_zero_log).unwrap_err(),
-            crate::verifier::VkLoadError::InvalidParameters
+            VkLoadError::InvalidParameters
         );
 
         // Correct length but log_circuit_size > CONST_PROOF_SIZE_LOG_N
@@ -342,7 +340,7 @@ mod tests {
         let bytes_large_log = Bytes::from_slice(&env, &large_log);
         assert_eq!(
             load_vk_from_bytes(&env, &bytes_large_log).unwrap_err(),
-            crate::verifier::VkLoadError::InvalidParameters
+            VkLoadError::InvalidParameters
         );
 
         // circuit_size does not equal 1 << log_circuit_size
@@ -356,7 +354,7 @@ mod tests {
         let bytes_mismatch_cs = Bytes::from_slice(&env, &mismatch_cs);
         assert_eq!(
             load_vk_from_bytes(&env, &bytes_mismatch_cs).unwrap_err(),
-            crate::verifier::VkLoadError::InvalidParameters
+            VkLoadError::InvalidParameters
         );
 
         // pub_inputs_offset > circuit_size
@@ -374,7 +372,7 @@ mod tests {
         let bytes_bad_offset = Bytes::from_slice(&env, &bad_offset);
         assert_eq!(
             load_vk_from_bytes(&env, &bytes_bad_offset).unwrap_err(),
-            crate::verifier::VkLoadError::InvalidParameters
+            VkLoadError::InvalidParameters
         );
     }
 }

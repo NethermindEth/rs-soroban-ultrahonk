@@ -98,7 +98,10 @@ pub fn verify_shplemini(
     })?;
 
     // Defense-in-depth: ensure no inverted result is zero before use.
-    if inverted[..batch_size].iter().any(|x| x.is_zero()) {
+    if inverted[..batch_size.min(inverted.len())]
+        .iter()
+        .any(|x| x.is_zero())
+    {
         return Err("shplemini: batch inversion produced zero result");
     }
 
