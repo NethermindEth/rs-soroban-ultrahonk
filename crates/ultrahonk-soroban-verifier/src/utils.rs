@@ -13,7 +13,7 @@ use crate::types::{
     G1Point, Proof, VerificationKey, BATCHED_RELATION_PARTIAL_LENGTH, CONST_PROOF_SIZE_LOG_N,
     NUMBER_OF_ENTITIES, PAIRING_POINTS_SIZE,
 };
-use crate::PROOF_BYTES;
+use crate::{VkLoadError, PROOF_BYTES};
 use core::array;
 use soroban_sdk::{Bytes, Env};
 
@@ -38,23 +38,8 @@ const _: () = assert!(
         == PROOF_BYTES
 );
 
-/// Split a 32-byte big-endian field element into (low136, high≤118) limbs.
-///
-/// This is the inverse of `combine_limbs`.  Used when serialising G1 coordinates
-/// into the transcript buffer.
-///
-/// BB: `field_conversion::calc_num_bn254_frs` + native serialization
 #[inline]
-pub fn coord_to_halves_be(coord: &[u8]) -> ([u8; 32], [u8; 32]) {
-    let mut low = [0u8; 32];
-    let mut high = [0u8; 32];
-    low[15..].copy_from_slice(&coord[15..]); // 17 bytes
-    high[17..].copy_from_slice(&coord[..15]); // 15 bytes
-    (low, high)
-}
-
-#[inline]
-fn read_bytes<const N: usize>(bytes: &Bytes, idx: &mut u32) -> [u8; N] {
+pub(crate) fn read_bytes<const N: usize>(bytes: &Bytes, idx: &mut u32) -> [u8; N] {
     let mut out = [0u8; N];
     let end = *idx + N as u32;
     bytes.slice(*idx..end).copy_into_slice(&mut out);
@@ -63,7 +48,7 @@ fn read_bytes<const N: usize>(bytes: &Bytes, idx: &mut u32) -> [u8; N] {
 }
 
 #[inline]
-fn combine_limbs(lo: &[u8; 32], hi: &[u8; 32]) -> [u8; 32] {
+pub(crate) fn combine_limbs(lo: &[u8; 32], hi: &[u8; 32]) -> [u8; 32] {
     let mut out = [0u8; 32];
     out[..15].copy_from_slice(&hi[17..]);
     out[15..].copy_from_slice(&lo[15..]);
@@ -71,13 +56,13 @@ fn combine_limbs(lo: &[u8; 32], hi: &[u8; 32]) -> [u8; 32] {
 }
 
 #[inline]
-fn fr_word32(env: &Env, blob: &[u8], word_idx: usize) -> Fr {
+pub(crate) fn fr_word32(env: &Env, blob: &[u8], word_idx: usize) -> Fr {
     let o = word_idx * 32;
     Fr::from_array(env, blob[o..o + 32].try_into().expect("fr32"))
 }
 
 #[inline]
-fn g1_from_proof_chunk128(env: &Env, b: &[u8; 128]) -> G1Point {
+pub(crate) fn g1_from_proof_chunk128(env: &Env, b: &[u8; 128]) -> G1Point {
     let x = combine_limbs(
         b[0..32].try_into().expect("x_lo"),
         b[32..64].try_into().expect("x_hi"),
@@ -90,7 +75,7 @@ fn g1_from_proof_chunk128(env: &Env, b: &[u8; 128]) -> G1Point {
 }
 
 #[inline]
-fn g1_from_proof_blob_at(env: &Env, blob: &[u8], point_idx: usize) -> G1Point {
+pub(crate) fn g1_from_proof_blob_at(env: &Env, blob: &[u8], point_idx: usize) -> G1Point {
     let o = point_idx * 128;
     g1_from_proof_chunk128(env, blob[o..o + 128].try_into().expect("g1_128"))
 }
@@ -105,8 +90,10 @@ fn g1_from_proof_blob_at(env: &Env, blob: &[u8], point_idx: usize) -> G1Point {
 ///
 /// Note (bb v0.87.0): G1 coordinates are encoded as two limbs per coordinate
 /// using the (lo136, hi<=118) split and stored in the order (x_lo, x_hi, y_lo, y_hi).
-pub fn load_proof(env: &Env, proof_bytes: &Bytes) -> Proof {
-    assert_eq!(proof_bytes.len() as usize, PROOF_BYTES, "proof bytes len");
+pub fn load_proof(env: &Env, proof_bytes: &Bytes) -> Result<Proof, &'static str> {
+    if proof_bytes.len() as usize != PROOF_BYTES {
+        return Err("proof bytes length mismatch");
+    }
     let mut boundary = 0u32;
 
     // 0) pairing point object — one host read, then in-memory Fr decode
@@ -150,7 +137,7 @@ pub fn load_proof(env: &Env, proof_bytes: &Bytes) -> Proof {
 
     debug_assert_eq!(boundary as usize, PROOF_BYTES);
 
-    Proof {
+    Ok(Proof {
         pairing_point_object,
         w1,
         w2,
@@ -166,7 +153,7 @@ pub fn load_proof(env: &Env, proof_bytes: &Bytes) -> Proof {
         gemini_a_evaluations,
         shplonk_q,
         kzg_quotient,
-    }
+    })
 }
 
 /// Deserialize a `VerificationKey` from its canonical byte representation.
@@ -175,13 +162,13 @@ pub fn load_proof(env: &Env, proof_bytes: &Bytes) -> Proof {
 /// The point order matches `PrecomputedEntities` in BB.
 ///
 /// BB: `flavor/ultra_flavor.hpp::VerificationKey_`
-pub fn load_vk_from_bytes(env: &Env, bytes: &Bytes) -> Option<VerificationKey> {
+pub fn load_vk_from_bytes(env: &Env, bytes: &Bytes) -> Result<VerificationKey, VkLoadError> {
     const HEADER_WORDS: usize = 4;
     const NUM_POINTS: usize = 27;
     const POINT_BLOB_LEN: usize = NUM_POINTS * 64;
     const EXPECTED_LEN: usize = HEADER_WORDS * 8 + POINT_BLOB_LEN;
     if bytes.len() as usize != EXPECTED_LEN {
-        return None;
+        return Err(VkLoadError::WrongLength);
     }
 
     fn read_u64(bytes: &Bytes, idx: &mut u32) -> u64 {
@@ -194,50 +181,66 @@ pub fn load_vk_from_bytes(env: &Env, bytes: &Bytes) -> Option<VerificationKey> {
     let public_inputs_size = read_u64(bytes, &mut idx);
     let pub_inputs_offset = read_u64(bytes, &mut idx);
 
+    // Validate structural parameters immediately after parsing.
+    if log_circuit_size == 0
+        || log_circuit_size
+            > u64::try_from(CONST_PROOF_SIZE_LOG_N).map_err(|_| VkLoadError::InvalidParameters)?
+    {
+        return Err(VkLoadError::InvalidParameters);
+    }
+    if public_inputs_size < PAIRING_POINTS_SIZE as u64 {
+        return Err(VkLoadError::InvalidParameters);
+    }
+    if circuit_size != (1u64 << log_circuit_size) {
+        return Err(VkLoadError::InvalidParameters);
+    }
+    if pub_inputs_offset > circuit_size {
+        return Err(VkLoadError::InvalidParameters);
+    }
+
     // One contiguous read for all G1 points (27 × 64 bytes), then parse in layout order.
     let points_bytes = read_bytes::<POINT_BLOB_LEN>(bytes, &mut idx);
     let pts: [G1Point; NUM_POINTS] = array::from_fn(|i| {
         let off = i * 64;
-        G1Point::from_bytes(
-            env,
-            <&[u8; 64]>::try_from(&points_bytes[off..off + 64]).unwrap(),
-        )
+        let chunk: &[u8; 64] = (&points_bytes[off..off + 64])
+            .try_into()
+            .expect("vk point chunk");
+        G1Point::from_bytes(env, chunk)
     });
     debug_assert_eq!(idx as usize, EXPECTED_LEN);
 
-    let mut it = pts.into_iter();
-    Some(VerificationKey {
+    Ok(VerificationKey {
         circuit_size,
         log_circuit_size,
         public_inputs_size,
         pub_inputs_offset,
-        qm: it.next()?,
-        qc: it.next()?,
-        ql: it.next()?,
-        qr: it.next()?,
-        qo: it.next()?,
-        q4: it.next()?,
-        q_lookup: it.next()?,
-        q_arith: it.next()?,
-        q_delta_range: it.next()?,
-        q_elliptic: it.next()?,
-        q_aux: it.next()?,
-        q_poseidon2_external: it.next()?,
-        q_poseidon2_internal: it.next()?,
-        s1: it.next()?,
-        s2: it.next()?,
-        s3: it.next()?,
-        s4: it.next()?,
-        id1: it.next()?,
-        id2: it.next()?,
-        id3: it.next()?,
-        id4: it.next()?,
-        t1: it.next()?,
-        t2: it.next()?,
-        t3: it.next()?,
-        t4: it.next()?,
-        lagrange_first: it.next()?,
-        lagrange_last: it.next()?,
+        qm: pts[0].clone(),
+        qc: pts[1].clone(),
+        ql: pts[2].clone(),
+        qr: pts[3].clone(),
+        qo: pts[4].clone(),
+        q4: pts[5].clone(),
+        q_lookup: pts[6].clone(),
+        q_arith: pts[7].clone(),
+        q_delta_range: pts[8].clone(),
+        q_elliptic: pts[9].clone(),
+        q_aux: pts[10].clone(),
+        q_poseidon2_external: pts[11].clone(),
+        q_poseidon2_internal: pts[12].clone(),
+        s1: pts[13].clone(),
+        s2: pts[14].clone(),
+        s3: pts[15].clone(),
+        s4: pts[16].clone(),
+        id1: pts[17].clone(),
+        id2: pts[18].clone(),
+        id3: pts[19].clone(),
+        id4: pts[20].clone(),
+        t1: pts[21].clone(),
+        t2: pts[22].clone(),
+        t3: pts[23].clone(),
+        t4: pts[24].clone(),
+        lagrange_first: pts[25].clone(),
+        lagrange_last: pts[26].clone(),
     })
 }
 
@@ -245,6 +248,20 @@ pub fn load_vk_from_bytes(env: &Env, bytes: &Bytes) -> Option<VerificationKey> {
 mod tests {
     use super::*;
     use soroban_sdk::Env;
+
+    /// Split a 32-byte big-endian field element into (low136, high≤118) limbs.
+    ///
+    /// This is the inverse of `combine_limbs`.  Used when serialising G1 coordinates
+    /// into the transcript buffer.
+    ///
+    /// BB: `field_conversion::calc_num_bn254_frs` + native serialization
+    pub(crate) fn coord_to_halves_be(coord: &[u8]) -> ([u8; 32], [u8; 32]) {
+        let mut low = [0u8; 32];
+        let mut high = [0u8; 32];
+        low[15..].copy_from_slice(&coord[15..]); // 17 bytes
+        high[17..].copy_from_slice(&coord[..15]); // 15 bytes
+        (low, high)
+    }
 
     #[test]
     fn test_coord_limbs_round_trip() {
@@ -262,12 +279,34 @@ mod tests {
     }
 
     #[test]
+    fn test_load_proof_malformed_input() {
+        let env = Env::default();
+
+        // Too short
+        let bytes_short = Bytes::from_slice(&env, &[0u8; 10]);
+        let result = load_proof(&env, &bytes_short);
+
+        assert_eq!(result.err().unwrap(), "proof bytes length mismatch");
+
+        // Too long
+        let long_bytes = [0u8; PROOF_BYTES + 1];
+        let bytes_long = Bytes::from_slice(&env, &long_bytes);
+        assert_eq!(
+            load_proof(&env, &bytes_long).err().unwrap(),
+            "proof bytes length mismatch"
+        );
+    }
+
+    #[test]
     fn test_load_vk_malformed_input() {
         let env = Env::default();
 
         // Too short
         let bytes_short = Bytes::from_slice(&env, &[0u8; 10]);
-        assert!(load_vk_from_bytes(&env, &bytes_short).is_none());
+        assert_eq!(
+            load_vk_from_bytes(&env, &bytes_short).unwrap_err(),
+            VkLoadError::WrongLength
+        );
 
         // Too long
         const HEADER_WORDS: usize = 4;
@@ -276,6 +315,64 @@ mod tests {
 
         let long_bytes = [0u8; EXPECTED_LEN + 1];
         let bytes_long = Bytes::from_slice(&env, &long_bytes);
-        assert!(load_vk_from_bytes(&env, &bytes_long).is_none());
+        assert_eq!(
+            load_vk_from_bytes(&env, &bytes_long).unwrap_err(),
+            VkLoadError::WrongLength
+        );
+
+        // Correct length but log_circuit_size = 0
+        let mut zero_log = [0u8; EXPECTED_LEN];
+        // circuit_size = 1 (big-endian at offset 0..8)
+        zero_log[7] = 1;
+        // log_circuit_size = 0 (already zero at offset 8..16)
+        let bytes_zero_log = Bytes::from_slice(&env, &zero_log);
+        assert_eq!(
+            load_vk_from_bytes(&env, &bytes_zero_log).unwrap_err(),
+            VkLoadError::InvalidParameters
+        );
+
+        // Correct length but log_circuit_size > CONST_PROOF_SIZE_LOG_N
+        let mut large_log = [0u8; EXPECTED_LEN];
+        // circuit_size = 1
+        large_log[7] = 1;
+        // log_circuit_size = 29 (big-endian at offset 8..16)
+        large_log[15] = 29;
+        let bytes_large_log = Bytes::from_slice(&env, &large_log);
+        assert_eq!(
+            load_vk_from_bytes(&env, &bytes_large_log).unwrap_err(),
+            VkLoadError::InvalidParameters
+        );
+
+        // circuit_size does not equal 1 << log_circuit_size
+        let mut mismatch_cs = [0u8; EXPECTED_LEN];
+        // circuit_size = 2 (big-endian at offset 0..8)
+        mismatch_cs[7] = 2;
+        // log_circuit_size = 10 (big-endian at offset 8..16)
+        mismatch_cs[15] = 10;
+        // public_inputs_size = 16 to pass the minimum check
+        mismatch_cs[23] = 16;
+        let bytes_mismatch_cs = Bytes::from_slice(&env, &mismatch_cs);
+        assert_eq!(
+            load_vk_from_bytes(&env, &bytes_mismatch_cs).unwrap_err(),
+            VkLoadError::InvalidParameters
+        );
+
+        // pub_inputs_offset > circuit_size
+        let mut bad_offset = [0u8; EXPECTED_LEN];
+        // circuit_size = 1 << 10 = 1024
+        bad_offset[5] = 0x04;
+        // log_circuit_size = 10
+        bad_offset[15] = 10;
+        // public_inputs_size = 16
+        bad_offset[23] = 16;
+        // pub_inputs_offset = u64::MAX
+        for b in &mut bad_offset[24..32] {
+            *b = 0xff;
+        }
+        let bytes_bad_offset = Bytes::from_slice(&env, &bad_offset);
+        assert_eq!(
+            load_vk_from_bytes(&env, &bytes_bad_offset).unwrap_err(),
+            VkLoadError::InvalidParameters
+        );
     }
 }

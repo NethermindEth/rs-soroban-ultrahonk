@@ -243,7 +243,7 @@ fn accumulate_elliptic_relation(env: &Env, p: &[Fr], evals: &mut [Fr], domain_se
 /// ROM consistency, and RAM consistency.
 ///
 /// BB: `relations/auxiliary_relation.hpp::AuxiliaryRelation::accumulate`
-fn accumulate_auxillary_relation(
+fn accumulate_auxiliary_relation(
     env: &Env,
     p: &[Fr],
     rp: &RelationParameters,
@@ -472,7 +472,7 @@ pub fn accumulate_relation_evaluations(
     );
     accumulate_delta_range_relation(env, purported_evaluations, &mut evaluations, domain_sep);
     accumulate_elliptic_relation(env, purported_evaluations, &mut evaluations, domain_sep);
-    accumulate_auxillary_relation(env, purported_evaluations, rp, &mut evaluations, domain_sep);
+    accumulate_auxiliary_relation(env, purported_evaluations, rp, &mut evaluations, domain_sep);
     accumulate_poseidon_external_relation(purported_evaluations, &mut evaluations, domain_sep);
     accumulate_poseidon_internal_relation(
         purported_evaluations,

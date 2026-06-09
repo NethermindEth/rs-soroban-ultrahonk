@@ -128,6 +128,9 @@ pub fn batch_inverse(vals: &[Fr], out: &mut [Fr]) -> Result<(), &'static str> {
     }
 
     // 2) Invert the total product
+    if out[n - 1].is_zero() {
+        return Err("denominator is zero");
+    }
     let mut inv_acc = out[n - 1].inverse();
 
     // 3) Sweep back to recover individual inverses
@@ -245,6 +248,17 @@ mod tests {
         for inverse in inverses {
             assert_eq!(inverse, expected_inv);
         }
+    }
+
+    #[test]
+    fn batch_inverse_zero_element() {
+        let env = Env::default();
+        let inputs = [Fr::from_u64(&env, 2), Fr::zero(&env), Fr::from_u64(&env, 5)];
+        let mut inverses = [Fr::zero(&env), Fr::zero(&env), Fr::zero(&env)];
+        assert_eq!(
+            batch_inverse(&inputs, &mut inverses),
+            Err("denominator is zero")
+        );
     }
 
     #[test]

@@ -12,7 +12,7 @@ use core::array;
 use crate::{
     field::{batch_inverse, Fr},
     relations::accumulate_relation_evaluations,
-    types::{Transcript, VerificationKey, BATCHED_RELATION_PARTIAL_LENGTH},
+    types::{Transcript, VerificationKey, BATCHED_RELATION_PARTIAL_LENGTH, CONST_PROOF_SIZE_LOG_N},
 };
 use soroban_sdk::Env;
 
@@ -85,6 +85,15 @@ fn compute_next_target_sum(
     one: &Fr,
     zero: &Fr,
 ) -> Result<Fr, &'static str> {
+    // Short-circuit: if round_challenge equals any domain point, return the
+    // corresponding univariate value directly. This matches BB behavior and
+    // avoids a division-by-zero in the barycentric formula.
+    for (point, univariate) in point_indices.iter().zip(round_univariate.iter()) {
+        if &round_challenge == point {
+            return Ok(univariate.clone());
+        }
+    }
+
     // B(χ) = ∏ (χ - i) for i in 0..8
     // Also collect denominators for batch inversion
     let mut denoms: [Fr; BATCHED_RELATION_PARTIAL_LENGTH] = array::from_fn(|_| zero.clone());
@@ -102,8 +111,8 @@ fn compute_next_target_sum(
 
     // Σ u_i * inv_denom_i
     let mut acc = zero.clone();
-    for i in 0..BATCHED_RELATION_PARTIAL_LENGTH {
-        acc = acc + (&round_univariate[i] * &inv_denoms[i]);
+    for (univariate, inv_denom) in round_univariate.iter().zip(inv_denoms.iter()) {
+        acc = acc + (univariate * inv_denom);
     }
 
     Ok(b_poly * acc)
@@ -143,6 +152,9 @@ pub fn verify_sumcheck(
     vk: &VerificationKey,
 ) -> Result<(), &'static str> {
     let log_n = vk.log_circuit_size as usize;
+    if log_n == 0 || log_n > CONST_PROOF_SIZE_LOG_N {
+        return Err("sumcheck: log_circuit_size out of range");
+    }
     let zero = Fr::zero(env);
     let one = Fr::one(env);
     let barycentric_weights: [Fr; BATCHED_RELATION_PARTIAL_LENGTH] =
@@ -201,5 +213,63 @@ pub fn verify_sumcheck(
         );
         crate::trace!("======================================");
         Err("sumcheck final mismatch")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compute_next_target_sum_at_domain_point_zero() {
+        let env = Env::default();
+        let zero = Fr::zero(&env);
+        let one = Fr::one(&env);
+        let barycentric_weights: [Fr; BATCHED_RELATION_PARTIAL_LENGTH] =
+            array::from_fn(|i| Fr::from_array(&env, &BARY_BYTES[i]));
+        let point_indices: [Fr; BATCHED_RELATION_PARTIAL_LENGTH] =
+            array::from_fn(|i| Fr::from_u64(&env, i as u64));
+
+        // Arbitrary round univariate values
+        let round_univariate: [Fr; BATCHED_RELATION_PARTIAL_LENGTH] =
+            array::from_fn(|i| Fr::from_u64(&env, (100 + i) as u64));
+
+        // Evaluate at domain point 0 — should short-circuit to round_univariate[0]
+        let result = compute_next_target_sum(
+            &round_univariate,
+            zero.clone(),
+            &barycentric_weights,
+            &point_indices,
+            &one,
+            &zero,
+        )
+        .expect("should succeed at domain point 0");
+        assert_eq!(result, round_univariate[0]);
+    }
+
+    #[test]
+    fn compute_next_target_sum_at_domain_point_three() {
+        let env = Env::default();
+        let zero = Fr::zero(&env);
+        let one = Fr::one(&env);
+        let barycentric_weights: [Fr; BATCHED_RELATION_PARTIAL_LENGTH] =
+            array::from_fn(|i| Fr::from_array(&env, &BARY_BYTES[i]));
+        let point_indices: [Fr; BATCHED_RELATION_PARTIAL_LENGTH] =
+            array::from_fn(|i| Fr::from_u64(&env, i as u64));
+
+        let round_univariate: [Fr; BATCHED_RELATION_PARTIAL_LENGTH] =
+            array::from_fn(|i| Fr::from_u64(&env, (100 + i) as u64));
+
+        // Evaluate at domain point 3 — should short-circuit to round_univariate[3]
+        let result = compute_next_target_sum(
+            &round_univariate,
+            point_indices[3].clone(),
+            &barycentric_weights,
+            &point_indices,
+            &one,
+            &zero,
+        )
+        .expect("should succeed at domain point 3");
+        assert_eq!(result, round_univariate[3]);
     }
 }

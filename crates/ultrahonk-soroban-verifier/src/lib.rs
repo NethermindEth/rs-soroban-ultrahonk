@@ -18,4 +18,4 @@ pub mod verifier;
 pub const PROOF_FIELDS: usize = 456;
 pub const PROOF_BYTES: usize = PROOF_FIELDS * 32;
 
-pub use verifier::UltraHonkVerifier;
+pub use verifier::{UltraHonkVerifier, VkLoadError};

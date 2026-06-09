@@ -41,8 +41,12 @@ pub fn verify_shplemini(
     vk: &VerificationKey,
     tp: &Transcript,
 ) -> Result<(), &'static str> {
-    // 1) r^{2^i}
     let log_n = vk.log_circuit_size as usize;
+    if log_n == 0 || log_n > CONST_PROOF_SIZE_LOG_N {
+        return Err("shplemini: log_circuit_size out of range");
+    }
+
+    // 1) r^{2^i}
     let one = Fr::one(env);
     let two = Fr::from_u64(env, 2);
     let mut r_pows = Fr::zero_array::<CONST_PROOF_SIZE_LOG_N>(env);
@@ -92,6 +96,14 @@ pub fn verify_shplemini(
     batch_inverse(&to_invert[..batch_size], &mut inverted[..batch_size]).map_err(|_| {
         "shplemini: batch inversion failed (zero denominator in shplonk/gemini/fold)"
     })?;
+
+    // Defense-in-depth: ensure no inverted result is zero before use.
+    if inverted[..batch_size.min(inverted.len())]
+        .iter()
+        .any(|x| x.is_zero())
+    {
+        return Err("shplemini: batch inversion produced zero result");
+    }
 
     // Unpack results
     let pos0 = inverted[0].clone();

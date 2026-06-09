@@ -19,12 +19,26 @@ use crate::{
 };
 use soroban_sdk::{Bytes, Env};
 
+/// Error type describing why a verification key could not be loaded from bytes.
+///
+/// Intentionally minimal: the VK is public data, so callers do not need a
+/// fine-grained oracle. The two variants separate deployer mistakes (wrong
+/// byte count) from invalid structural parameters that could indicate
+/// corruption or an adversarially crafted VK.
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum VkLoadError {
+    /// Byte slice length does not match the exact expected VK size (1760 bytes).
+    WrongLength,
+    /// Header parsed successfully but contains out-of-range values.
+    InvalidParameters,
+}
+
 /// Error type describing the specific reason verification failed.
 #[derive(Debug)]
 pub enum VerifyError {
-    InvalidInput(&'static str),
-    SumcheckFailed(&'static str),
-    ShplonkFailed(&'static str),
+    InvalidInput,
+    SumcheckFailed,
+    ShplonkFailed,
 }
 
 pub struct UltraHonkVerifier {
@@ -40,10 +54,8 @@ impl UltraHonkVerifier {
         }
     }
 
-    pub fn new(env: &Env, vk_bytes: &Bytes) -> Result<Self, VerifyError> {
-        load_vk_from_bytes(env, vk_bytes)
-            .map(|vk| Self::new_with_vk(env, vk))
-            .ok_or(VerifyError::InvalidInput("vk parse error"))
+    pub fn new(env: &Env, vk_bytes: &Bytes) -> Result<Self, VkLoadError> {
+        load_vk_from_bytes(env, vk_bytes).map(|vk| Self::new_with_vk(env, vk))
     }
 
     /// Expose a reference to the parsed VK for debugging/inspection.
@@ -69,22 +81,20 @@ impl UltraHonkVerifier {
         public_inputs_bytes: &Bytes,
     ) -> Result<(), VerifyError> {
         // 1) parse proof
-        let proof = load_proof(env, proof_bytes);
+        let proof = load_proof(env, proof_bytes).map_err(|_| VerifyError::InvalidInput)?;
 
         // 2) sanity on public inputs (length and VK metadata if present)
         if !public_inputs_bytes.len().is_multiple_of(32) {
-            return Err(VerifyError::InvalidInput(
-                "public inputs must be 32-byte aligned",
-            ));
+            return Err(VerifyError::InvalidInput);
         }
         let provided = (public_inputs_bytes.len() / 32) as u64;
         let expected = self
             .vk
             .public_inputs_size
             .checked_sub(PAIRING_POINTS_SIZE as u64)
-            .ok_or(VerifyError::InvalidInput("vk inputs < 16"))?;
+            .ok_or(VerifyError::InvalidInput)?;
         if expected != provided {
-            return Err(VerifyError::InvalidInput("public inputs mismatch"));
+            return Err(VerifyError::InvalidInput);
         }
 
         // 3) Fiat–Shamir transcript
@@ -97,7 +107,8 @@ impl UltraHonkVerifier {
             self.vk.circuit_size,
             pis_total,
             pub_inputs_offset,
-        );
+        )
+        .map_err(|_| VerifyError::InvalidInput)?;
 
         // 4) Public delta
         t.rel_params.public_inputs_delta = Self::compute_public_input_delta(
@@ -109,13 +120,14 @@ impl UltraHonkVerifier {
             pub_inputs_offset,
             self.vk.circuit_size,
         )
-        .map_err(VerifyError::InvalidInput)?;
+        .map_err(|_| VerifyError::InvalidInput)?;
 
         // 5) Sum-check
-        verify_sumcheck(env, &proof, &t, &self.vk).map_err(VerifyError::SumcheckFailed)?;
+        verify_sumcheck(env, &proof, &t, &self.vk).map_err(|_| VerifyError::SumcheckFailed)?;
 
         // 6) Shplonk
-        verify_shplemini(&self.env, &proof, &self.vk, &t).map_err(VerifyError::ShplonkFailed)?;
+        verify_shplemini(&self.env, &proof, &self.vk, &t)
+            .map_err(|_| VerifyError::ShplonkFailed)?;
 
         Ok(())
     }
@@ -163,6 +175,9 @@ impl UltraHonkVerifier {
             denominator = &denominator * &(&denominator_acc + public_input);
             numerator_acc = &numerator_acc + beta;
             denominator_acc = &denominator_acc - beta;
+        }
+        if denominator.is_zero() {
+            return Err("denominator is zero in public_input_delta");
         }
         let denominator_inv = denominator.inverse();
         Ok(numerator * denominator_inv)

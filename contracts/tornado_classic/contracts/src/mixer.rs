@@ -22,6 +22,8 @@ pub enum MixerError {
     VerifierNotSet = 5,
     TreeFull = 6,
     RootNotSet = 7,
+    AlreadyInitialized = 8,
+    InvalidPublicInputs = 9,
 }
 
 #[contractevent(topics = ["deposit"], data_format = "map")]
@@ -86,7 +88,7 @@ fn zeroes_for_tree(env: &Env) -> Vec<BytesN<32>> {
 
 fn parse_public_inputs(bytes: &Bytes) -> Result<([u8; 32], [u8; 32]), MixerError> {
     if bytes.len() != 64 {
-        return Err(MixerError::VerificationFailed);
+        return Err(MixerError::InvalidPublicInputs);
     }
     let mut buf = [0u8; 64];
     bytes.copy_into_slice(&mut buf);
@@ -115,6 +117,9 @@ fn verify_proof(
 impl MixerContract {
     /// Initialize the contract with the verifier address.
     pub fn __constructor(env: Env, verifier: Address) -> Result<(), MixerError> {
+        if env.storage().instance().has(&key_verifier()) {
+            return Err(MixerError::AlreadyInitialized);
+        }
         env.storage().instance().set(&key_verifier(), &verifier);
         Ok(())
     }
@@ -226,10 +231,10 @@ impl MixerContract {
     }
 }
 
-#[cfg(any(test, feature = "testutils"))]
+#[cfg(test)]
 #[contractimpl]
 impl MixerContract {
-    /// Test-only helper to override the stored root when running under debug builds.
+    /// Test-only helper to override the stored root. Only compiled into test builds.
     pub fn set_root(env: Env, root: BytesN<32>) -> Result<(), MixerError> {
         env.storage().instance().set(&key_root(), &root);
         Ok(())
