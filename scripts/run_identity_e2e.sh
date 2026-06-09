@@ -89,12 +89,6 @@ fi
 echo -e "${BLUE}=== Step 3: Ensuring account is funded ===${NC}"
 "${SCRIPT_DIR}/fund_account.sh"
 
-GOVERNOR_ADDRESS=$(stellar keys address "${STELLAR_SOURCE_ACCOUNT}" | tail -n 1 | tr -d '[:space:]')
-if [[ -z "${GOVERNOR_ADDRESS}" ]]; then
-  echo -e "${RED}Failed to resolve governor address for ${STELLAR_SOURCE_ACCOUNT}${NC}"
-  exit 1
-fi
-
 # ---------------------------------------------------------------------------
 # 4. Deploy contract with VK
 # ---------------------------------------------------------------------------
@@ -107,7 +101,6 @@ for attempt in $(seq 1 "${STELLAR_DEPLOY_RETRIES}"); do
     --source "${STELLAR_SOURCE_ACCOUNT}" \
     --network "${STELLAR_NETWORK_NAME}" \
     -- \
-    --governor "${GOVERNOR_ADDRESS}" \
     --vk_bytes-file-path "${TARGET_DIR}/vk"); then
     DEPLOY_OK=1
     break

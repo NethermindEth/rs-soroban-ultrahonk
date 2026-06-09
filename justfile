@@ -94,17 +94,11 @@ deploy-identity:
     just build-circuits identity
     stellar contract build
     ./scripts/fund_account.sh
-    GOVERNOR_ADDRESS=$(stellar keys address "$STELLAR_SOURCE_ACCOUNT" | tail -n 1 | tr -d '[:space:]')
-    if [[ -z "$GOVERNOR_ADDRESS" ]]; then
-      echo "Failed to resolve governor address for $STELLAR_SOURCE_ACCOUNT" >&2
-      exit 1
-    fi
     CONTRACT_ID=$(stellar contract deploy \
       --wasm "$CONTRACT_WASM" \
       --source "$STELLAR_SOURCE_ACCOUNT" \
       --network "$STELLAR_NETWORK_NAME" \
       -- \
-      --governor "$GOVERNOR_ADDRESS" \
       --vk_bytes-file-path "$CIRCUIT_DIR/target/vk")
     echo "$CONTRACT_ID" > "$ROOT_DIR/.identity_contract_id"
     echo "Identity contract deployed: $CONTRACT_ID"
@@ -112,7 +106,24 @@ deploy-identity:
 # Verify an identity proof on-chain.
 # If no contract_id is provided, reads from .identity_contract_id file.
 verify-identity contract_id="":
-    ./scripts/verify_identity.sh {{contract_id}}
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source ./scripts/config.sh
+    CIRCUIT_DIR="$ROOT_DIR/circuits/identity"
+    if [ -z "{{contract_id}}" ]; then
+      CONTRACT_ID=$(cat "$ROOT_DIR/.identity_contract_id")
+    else
+      CONTRACT_ID="{{contract_id}}"
+    fi
+    stellar contract invoke \
+      --id "$CONTRACT_ID" \
+      --source "$STELLAR_SOURCE_ACCOUNT" \
+      --network "$STELLAR_NETWORK_NAME" \
+      --send yes \
+      -- \
+      prove_identity \
+      --public_inputs-file-path "$CIRCUIT_DIR/target/public_inputs" \
+      --proof_bytes-file-path "$CIRCUIT_DIR/target/proof"
 
 # Run the full Identity E2E pipeline (build circuit → build contract → deploy → prove)
 identity-e2e network="local":
