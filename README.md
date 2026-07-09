@@ -2,6 +2,10 @@
 
 Soroban contract wrapper around the Noir(UltraHonk) verifier. The VK is set at deploy time; proofs are verified with `public_inputs` and `proof`.
 
+## Acknowledgements
+
+This repository is maintained under the NethermindEth organization. The project originated in [`yugocabrio/rs-soroban-ultrahonk`](https://github.com/yugocabrio/rs-soroban-ultrahonk), and we gratefully acknowledge Yugo Cabrio and Changmin Cho (`indextree`) for the original work this repository builds on.
+
 ## Requirements Installation
 
 Before you begin, ensure you have the following tools installed:
