@@ -3,7 +3,7 @@
 //! Handles the fixed-size byte layouts emitted by the Barretenberg native prover.
 //! G1 coordinates use the BN254 base-field limb split (low 136 bits + high ≤118 bits).
 //!
-//! BB reference (v0.82.2):
+//! BB reference (v0.87.0):
 //!   - `honk/proof_system/types/proof.hpp`
 //!   - `flavor/ultra_flavor.hpp::Proof`
 //!   - `flavor/ultra_flavor.hpp::VerificationKey_`
@@ -26,6 +26,12 @@ const SUMCHECK_EVAL_BYTES: usize = NUMBER_OF_ENTITIES * 32;
 const GEMINI_FOLD_COMMS_BYTES: usize = (CONST_PROOF_SIZE_LOG_N - 1) * 128;
 const GEMINI_A_EVAL_BYTES: usize = CONST_PROOF_SIZE_LOG_N * 32;
 const FINAL_TWO_G1_BYTES: usize = 2 * 128;
+
+/// BN254 base-field modulus used by G1 coordinates.
+const BN254_FP_MODULUS_BYTES: [u8; 32] = [
+    0x30, 0x64, 0x4e, 0x72, 0xe1, 0x31, 0xa0, 0x29, 0xb8, 0x50, 0x45, 0xb6, 0x81, 0x81, 0x58, 0x5d,
+    0x97, 0x81, 0x6a, 0x91, 0x68, 0x71, 0xca, 0x8d, 0x3c, 0x20, 0x8c, 0x16, 0xd8, 0x7c, 0xfd, 0x47,
+];
 
 const _: () = assert!(
     PAIRING_OBJ_BYTES
@@ -53,6 +59,73 @@ pub(crate) fn combine_limbs(lo: &[u8; 32], hi: &[u8; 32]) -> [u8; 32] {
     out[..15].copy_from_slice(&hi[17..]);
     out[15..].copy_from_slice(&lo[15..]);
     out
+}
+
+/// Check that a blob consists only of canonical BN254 scalar encodings.
+#[inline]
+pub(crate) fn validate_fr_blob(blob: &[u8]) -> bool {
+    if !blob.len().is_multiple_of(32) {
+        return false;
+    }
+    blob.chunks_exact(32).all(|word| {
+        let word: &[u8; 32] = word.try_into().expect("32-byte scalar chunk");
+        Fr::is_canonical_bytes(word)
+    })
+}
+
+#[inline(always)]
+fn is_canonical_fp(value: &[u8; 32]) -> bool {
+    value < &BN254_FP_MODULUS_BYTES
+}
+
+/// Validate the four-word `(x_lo, x_hi, y_lo, y_hi)` encoding used for proof
+/// commitments, including the otherwise-unused padding bytes and curve
+/// membership. This makes the accepted proof encoding unique and keeps
+/// malformed points on the structured `Result` error path.
+pub(crate) fn validate_g1_proof_blob(env: &Env, blob: &[u8]) -> bool {
+    if !blob.len().is_multiple_of(128) {
+        return false;
+    }
+
+    blob.chunks_exact(128).all(|encoded| {
+        let x_lo: &[u8; 32] = encoded[0..32].try_into().expect("x low limb");
+        let x_hi: &[u8; 32] = encoded[32..64].try_into().expect("x high limb");
+        let y_lo: &[u8; 32] = encoded[64..96].try_into().expect("y low limb");
+        let y_hi: &[u8; 32] = encoded[96..128].try_into().expect("y high limb");
+
+        if x_lo[..15].iter().any(|byte| *byte != 0)
+            || x_hi[..17].iter().any(|byte| *byte != 0)
+            || y_lo[..15].iter().any(|byte| *byte != 0)
+            || y_hi[..17].iter().any(|byte| *byte != 0)
+        {
+            return false;
+        }
+
+        let x = combine_limbs(x_lo, x_hi);
+        let y = combine_limbs(y_lo, y_hi);
+        if !is_canonical_fp(&x) || !is_canonical_fp(&y) {
+            return false;
+        }
+        let point = G1Point::from_xy(env, &x, &y);
+        env.crypto().bn254().g1_is_on_curve(&point.0)
+    })
+}
+
+/// Validate a contiguous blob of standard uncompressed `(x, y)` G1 points.
+pub(crate) fn validate_g1_uncompressed_blob(env: &Env, blob: &[u8]) -> bool {
+    if !blob.len().is_multiple_of(64) {
+        return false;
+    }
+    blob.chunks_exact(64).all(|encoded| {
+        let encoded: &[u8; 64] = encoded.try_into().expect("64-byte G1 chunk");
+        let x: &[u8; 32] = encoded[..32].try_into().expect("G1 x coordinate");
+        let y: &[u8; 32] = encoded[32..].try_into().expect("G1 y coordinate");
+        if !is_canonical_fp(x) || !is_canonical_fp(y) {
+            return false;
+        }
+        let point = G1Point::from_bytes(env, encoded);
+        env.crypto().bn254().g1_is_on_curve(&point.0)
+    })
 }
 
 #[inline]
@@ -98,10 +171,16 @@ pub fn load_proof(env: &Env, proof_bytes: &Bytes) -> Result<Proof, &'static str>
 
     // 0) pairing point object — one host read, then in-memory Fr decode
     let ppo = read_bytes::<PAIRING_OBJ_BYTES>(proof_bytes, &mut boundary);
+    if !validate_fr_blob(&ppo) {
+        return Err("invalid proof encoding");
+    }
     let pairing_point_object = array::from_fn(|i| fr_word32(env, &ppo, i));
 
     // 1–4) eight consecutive G1 commitments
     let g1_head = read_bytes::<PROOF_HEAD_G1_BYTES>(proof_bytes, &mut boundary);
+    if !validate_g1_proof_blob(env, &g1_head) {
+        return Err("invalid proof encoding");
+    }
     let w1 = g1_from_proof_blob_at(env, &g1_head, 0);
     let w2 = g1_from_proof_blob_at(env, &g1_head, 1);
     let w3 = g1_from_proof_blob_at(env, &g1_head, 2);
@@ -113,6 +192,9 @@ pub fn load_proof(env: &Env, proof_bytes: &Bytes) -> Result<Proof, &'static str>
 
     // 5) sumcheck_univariates (row-major)
     let su = read_bytes::<SUMCHECK_UNIV_BYTES>(proof_bytes, &mut boundary);
+    if !validate_fr_blob(&su) {
+        return Err("invalid proof encoding");
+    }
     let sumcheck_univariates: [[Fr; BATCHED_RELATION_PARTIAL_LENGTH]; CONST_PROOF_SIZE_LOG_N] =
         array::from_fn(|r| {
             array::from_fn(|c| fr_word32(env, &su, r * BATCHED_RELATION_PARTIAL_LENGTH + c))
@@ -120,18 +202,30 @@ pub fn load_proof(env: &Env, proof_bytes: &Bytes) -> Result<Proof, &'static str>
 
     // 6) sumcheck_evaluations
     let se = read_bytes::<SUMCHECK_EVAL_BYTES>(proof_bytes, &mut boundary);
+    if !validate_fr_blob(&se) {
+        return Err("invalid proof encoding");
+    }
     let sumcheck_evaluations = array::from_fn(|i| fr_word32(env, &se, i));
 
     // 7) gemini_fold_comms
     let gf = read_bytes::<GEMINI_FOLD_COMMS_BYTES>(proof_bytes, &mut boundary);
+    if !validate_g1_proof_blob(env, &gf) {
+        return Err("invalid proof encoding");
+    }
     let gemini_fold_comms = array::from_fn(|i| g1_from_proof_blob_at(env, &gf, i));
 
     // 8) gemini_a_evaluations
     let ga = read_bytes::<GEMINI_A_EVAL_BYTES>(proof_bytes, &mut boundary);
+    if !validate_fr_blob(&ga) {
+        return Err("invalid proof encoding");
+    }
     let gemini_a_evaluations = array::from_fn(|i| fr_word32(env, &ga, i));
 
     // 9) shplonk_q, kzg_quotient
     let tail_g1 = read_bytes::<FINAL_TWO_G1_BYTES>(proof_bytes, &mut boundary);
+    if !validate_g1_proof_blob(env, &tail_g1) {
+        return Err("invalid proof encoding");
+    }
     let shplonk_q = g1_from_proof_chunk128(env, tail_g1[0..128].try_into().expect("shplonk"));
     let kzg_quotient = g1_from_proof_chunk128(env, tail_g1[128..256].try_into().expect("kzg"));
 
@@ -200,6 +294,9 @@ pub fn load_vk_from_bytes(env: &Env, bytes: &Bytes) -> Result<VerificationKey, V
 
     // One contiguous read for all G1 points (27 × 64 bytes), then parse in layout order.
     let points_bytes = read_bytes::<POINT_BLOB_LEN>(bytes, &mut idx);
+    if !validate_g1_uncompressed_blob(env, &points_bytes) {
+        return Err(VkLoadError::InvalidParameters);
+    }
     let pts: [G1Point; NUM_POINTS] = array::from_fn(|i| {
         let off = i * 64;
         let chunk: &[u8; 64] = (&points_bytes[off..off + 64])

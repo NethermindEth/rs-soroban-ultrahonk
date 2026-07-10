@@ -23,7 +23,7 @@ use rs_soroban_ultrahonk::UltraHonkVerifierContract;
 use tornado_classic_contracts::mixer::{MixerContract, MixerError};
 
 #[cfg(feature = "testutils")]
-use ultrahonk_soroban_verifier::PROOF_BYTES;
+use ultrahonk_soroban_verifier::ZK_PROOF_BYTES;
 
 const TREE_DEPTH_TEST: u32 = 20;
 
@@ -130,8 +130,7 @@ fn wasm_release_path(file_name: &str) -> Option<PathBuf> {
 
 #[cfg(feature = "wasm-cost")]
 fn ensure_release_wasm(file_name: &str, package: &str, extra_args: &[&str]) -> Vec<u8> {
-    // Always rebuild here: the same output path is used for different feature sets,
-    // and the wasm-cost test needs the test-only exports enabled.
+    // Always rebuild so the budget test measures the current release artifact.
     let mut cmd = Command::new("cargo");
     cmd.current_dir(workspace_root());
     cmd.args([
@@ -171,7 +170,7 @@ fn register_wasm_mixer(env: &Env, verifier: Address) -> Address {
     let wasm = ensure_release_wasm(
         "tornado_classic_contracts.wasm",
         "tornado_classic_contracts",
-        &["--features", "wasm-cost"],
+        &[],
     );
     env.register(wasm.as_slice(), (verifier,))
 }
@@ -226,9 +225,10 @@ fn mixer_withdraw_and_double_spend_rejected() {
     let _ = env.host().set_diagnostic_level(DiagnosticLevel::None);
 
     // Artifacts
-    let vk_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/vk");
-    let proof_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/proof");
-    let pub_inputs_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/public_inputs");
+    let vk_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/zk/vk");
+    let proof_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/zk/proof");
+    let pub_inputs_bin: &[u8] =
+        include_bytes!("../../../../circuits/tornado/target/zk/public_inputs");
 
     let vk_bytes: Bytes = Bytes::from_slice(&env, vk_bin);
     // Register contracts
@@ -251,7 +251,7 @@ fn mixer_withdraw_and_double_spend_rejected() {
     })
     .expect("set_root ok");
 
-    assert_eq!(proof_bin.len(), PROOF_BYTES);
+    assert_eq!(proof_bin.len(), ZK_PROOF_BYTES);
     let proof_bytes: Bytes = Bytes::from_slice(&env, proof_bin);
     let public_inputs: Bytes = Bytes::from_slice(&env, pub_inputs_bin);
 
@@ -297,8 +297,9 @@ fn withdraw_rejects_invalid_public_inputs() {
     let _ = env.host().set_diagnostic_level(DiagnosticLevel::None);
 
     let vk_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/vk");
-    let proof_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/proof");
-    let pub_inputs_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/public_inputs");
+    let proof_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/e2e/zk/proof");
+    let pub_inputs_bin: &[u8] =
+        include_bytes!("../../../../circuits/tornado/target/e2e/zk/public_inputs");
 
     let vk_bytes: Bytes = Bytes::from_slice(&env, vk_bin);
     let verifier_id: Address = register_verifier(&env, &vk_bytes);
@@ -318,7 +319,7 @@ fn withdraw_rejects_invalid_public_inputs() {
     })
     .expect("set_root ok");
 
-    assert_eq!(proof_bin.len(), PROOF_BYTES);
+    assert_eq!(proof_bin.len(), ZK_PROOF_BYTES);
     let proof_bytes: Bytes = Bytes::from_slice(&env, proof_bin);
     let mut corrupted_inputs = pub_inputs_bin.to_vec();
     corrupted_inputs[63] ^= 0x01;
@@ -349,7 +350,7 @@ fn withdraw_rejects_short_public_inputs() {
     let _ = env.host().set_diagnostic_level(DiagnosticLevel::None);
 
     let vk_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/vk");
-    let proof_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/proof");
+    let proof_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/zk/proof");
 
     let vk_bytes: Bytes = Bytes::from_slice(&env, vk_bin);
     let verifier_id: Address = register_verifier(&env, &vk_bytes);
@@ -361,7 +362,7 @@ fn withdraw_rejects_short_public_inputs() {
     })
     .unwrap();
 
-    assert_eq!(proof_bin.len(), PROOF_BYTES);
+    assert_eq!(proof_bin.len(), ZK_PROOF_BYTES);
     let proof_bytes: Bytes = Bytes::from_slice(&env, proof_bin);
     let short_inputs = Bytes::from_slice(&env, &[0u8; 63]);
 
@@ -383,7 +384,7 @@ fn withdraw_rejects_long_public_inputs() {
     let _ = env.host().set_diagnostic_level(DiagnosticLevel::None);
 
     let vk_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/vk");
-    let proof_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/proof");
+    let proof_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/zk/proof");
 
     let vk_bytes: Bytes = Bytes::from_slice(&env, vk_bin);
     let verifier_id: Address = register_verifier(&env, &vk_bytes);
@@ -395,7 +396,7 @@ fn withdraw_rejects_long_public_inputs() {
     })
     .unwrap();
 
-    assert_eq!(proof_bin.len(), PROOF_BYTES);
+    assert_eq!(proof_bin.len(), ZK_PROOF_BYTES);
     let proof_bytes: Bytes = Bytes::from_slice(&env, proof_bin);
     let long_inputs = Bytes::from_slice(&env, &[0u8; 65]);
 
@@ -416,8 +417,9 @@ fn withdraw_rejects_root_mismatch() {
     env.cost_estimate().budget().reset_unlimited();
     let _ = env.host().set_diagnostic_level(DiagnosticLevel::None);
 
-    let proof_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/proof");
-    let pub_inputs_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/public_inputs");
+    let proof_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/zk/proof");
+    let pub_inputs_bin: &[u8] =
+        include_bytes!("../../../../circuits/tornado/target/zk/public_inputs");
 
     let vk_bytes: Bytes = vk_bytes(&env);
     let verifier_id: Address = register_verifier(&env, &vk_bytes);
@@ -436,7 +438,7 @@ fn withdraw_rejects_root_mismatch() {
     })
     .expect("set_root ok");
 
-    assert_eq!(proof_bin.len(), PROOF_BYTES);
+    assert_eq!(proof_bin.len(), ZK_PROOF_BYTES);
     let proof_bytes: Bytes = Bytes::from_slice(&env, proof_bin);
     let public_inputs: Bytes = Bytes::from_slice(&env, pub_inputs_bin);
 
@@ -472,28 +474,29 @@ fn print_wasm_budget_for_deposit_and_withdraw() {
     let _ = env.host().set_diagnostic_level(DiagnosticLevel::None);
 
     let vk_bytes: Bytes = vk_bytes(&env);
-    let proof_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/proof");
-    let pub_inputs_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/public_inputs");
+    let proof_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/e2e/zk/proof");
+    let pub_inputs_bin: &[u8] =
+        include_bytes!("../../../../circuits/tornado/target/e2e/zk/public_inputs");
+    let commitment_bin: &[u8] =
+        include_bytes!("../../../../circuits/tornado/target/e2e/commitment");
 
     let verifier_id: Address = register_wasm_verifier(&env, &vk_bytes);
     let mixer_id: Address = register_wasm_mixer(&env, verifier_id.clone());
 
     env.cost_estimate().budget().reset_unlimited();
-    let commitment = BytesN::from_array(&env, &[0x55; 32]);
+    let commitment: BytesN<32> = BytesN::from_array(
+        &env,
+        commitment_bin
+            .try_into()
+            .expect("E2E commitment must be exactly 32 bytes"),
+    );
     let mut deposit_args: SorobanVec<Val> = SorobanVec::new(&env);
     deposit_args.push_back(commitment.into_val(&env));
     let _: u32 = wasm_call_ok(&env, &mixer_id, "deposit", deposit_args);
     println!("=== wasm deposit budget usage ===");
     env.cost_estimate().budget().print();
 
-    assert!(pub_inputs_bin.len() >= 64);
-    let mut root_arr = [0u8; 32];
-    root_arr.copy_from_slice(&pub_inputs_bin[..32]);
-    let mut set_root_args: SorobanVec<Val> = SorobanVec::new(&env);
-    set_root_args.push_back(BytesN::from_array(&env, &root_arr).into_val(&env));
-    let _: () = wasm_call_ok(&env, &mixer_id, "set_root", set_root_args);
-
-    assert_eq!(proof_bin.len(), PROOF_BYTES);
+    assert_eq!(proof_bin.len(), ZK_PROOF_BYTES);
     let proof_bytes: Bytes = Bytes::from_slice(&env, proof_bin);
     let public_inputs: Bytes = Bytes::from_slice(&env, pub_inputs_bin);
 
@@ -537,9 +540,9 @@ fn deposit_then_withdraw_against_real_root_succeeds() {
     let _ = env.host().set_diagnostic_level(DiagnosticLevel::None);
 
     let vk_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/vk");
-    let proof_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/e2e/proof");
+    let proof_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/e2e/zk/proof");
     let pub_inputs_bin: &[u8] =
-        include_bytes!("../../../../circuits/tornado/target/e2e/public_inputs");
+        include_bytes!("../../../../circuits/tornado/target/e2e/zk/public_inputs");
     let commitment_bin: &[u8] =
         include_bytes!("../../../../circuits/tornado/target/e2e/commitment");
 
@@ -559,7 +562,7 @@ fn deposit_then_withdraw_against_real_root_succeeds() {
     })
     .expect("deposit ok");
 
-    assert_eq!(proof_bin.len(), PROOF_BYTES);
+    assert_eq!(proof_bin.len(), ZK_PROOF_BYTES);
     let proof_bytes: Bytes = Bytes::from_slice(&env, proof_bin);
     let public_inputs: Bytes = Bytes::from_slice(&env, pub_inputs_bin);
 

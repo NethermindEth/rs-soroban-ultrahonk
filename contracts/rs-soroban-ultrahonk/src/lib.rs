@@ -1,6 +1,6 @@
 #![no_std]
 use soroban_sdk::{contract, contracterror, contractimpl, symbol_short, Bytes, Env, Symbol};
-use ultrahonk_soroban_verifier::{UltraHonkVerifier, VkLoadError, PROOF_BYTES};
+use ultrahonk_soroban_verifier::{ProofFlavor, UltraHonkVerifier, VkLoadError};
 
 /// On-chain UltraHonk proof verifier.
 ///
@@ -21,17 +21,17 @@ pub struct UltraHonkVerifierContract;
 #[repr(u32)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Error {
-    /// VK byte slice does not match the expected exact length.
+    /// Invalid VK length.
     VkInvalidLength = 1,
-    /// VK header contains out-of-range structural parameters.
+    /// Invalid VK parameters.
     VkInvalidParameters = 2,
-    /// Proof byte slice does not match the expected exact length.
+    /// Invalid proof length.
     ProofParseError = 3,
-    /// Cryptographic verification failed.
+    /// Verification failed.
     VerificationFailed = 4,
-    /// No VK has been stored in contract instance storage.
+    /// VK is not initialized.
     VkNotSet = 5,
-    /// Constructor has already been called; VK is immutable.
+    /// Already initialized.
     AlreadyInitialized = 6,
 }
 
@@ -41,9 +41,7 @@ impl UltraHonkVerifierContract {
         symbol_short!("vk")
     }
 
-    /// Initialize the on-chain VK once at deploy time.
-    /// Validates the VK bytes by parsing them before storage so that empty or
-    /// malformed VKs are rejected at deployment time.
+    /// Initialize and validate the immutable VK.
     pub fn __constructor(env: Env, vk_bytes: Bytes) -> Result<(), Error> {
         if env.storage().instance().has(&Self::key_vk()) {
             return Err(Error::AlreadyInitialized);
@@ -66,7 +64,7 @@ impl UltraHonkVerifierContract {
 
     /// Verify an UltraHonk proof using the stored VK.
     pub fn verify_proof(env: Env, public_inputs: Bytes, proof_bytes: Bytes) -> Result<(), Error> {
-        if proof_bytes.len() as usize != PROOF_BYTES {
+        if ProofFlavor::from_proof_len(proof_bytes.len() as usize).is_none() {
             return Err(Error::ProofParseError);
         }
 

@@ -99,7 +99,7 @@ deploy-identity:
       --source "$STELLAR_SOURCE_ACCOUNT" \
       --network "$STELLAR_NETWORK_NAME" \
       -- \
-      --vk_bytes-file-path "$CIRCUIT_DIR/target/vk")
+      --vk_bytes-file-path "$CIRCUIT_DIR/target/zk/vk")
     echo "$CONTRACT_ID" > "$ROOT_DIR/.identity_contract_id"
     echo "Identity contract deployed: $CONTRACT_ID"
 
@@ -122,8 +122,8 @@ verify-identity contract_id="":
       --send yes \
       -- \
       prove_identity \
-      --public_inputs-file-path "$CIRCUIT_DIR/target/public_inputs" \
-      --proof_bytes-file-path "$CIRCUIT_DIR/target/proof"
+      --public_inputs-file-path "$CIRCUIT_DIR/target/zk/public_inputs" \
+      --proof_bytes-file-path "$CIRCUIT_DIR/target/zk/proof"
 
 # Run the full Identity E2E pipeline (build circuit → build contract → deploy → prove)
 identity-e2e network="local":

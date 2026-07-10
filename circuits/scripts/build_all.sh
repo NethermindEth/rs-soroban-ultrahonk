@@ -11,18 +11,26 @@ REPO_ROOT="$(cd "${ROOT}/.." && pwd)"
 export PATH="$HOME/.nargo/bin:$HOME/.bb/bin:$PATH"
 
 install_nargo() {
-  if command -v nargo >/dev/null 2>&1; then return; fi
+  if command -v nargo >/dev/null 2>&1 \
+    && [[ "$(nargo --version)" == *"nargo version = ${NOIR_VERSION}"* ]]; then
+    return
+  fi
 
   echo "• installing nargo ${NOIR_VERSION}"
   curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install | \
     NOIR_VERSION="${NOIR_VERSION}" bash
   export PATH="$HOME/.nargo/bin:$PATH"
-  [ -n "${GITHUB_PATH:-}" ] && echo "$HOME/.nargo/bin" >> "$GITHUB_PATH"
+  if [[ -n "${GITHUB_PATH:-}" ]]; then
+    echo "$HOME/.nargo/bin" >> "$GITHUB_PATH"
+  fi
   noirup -v "${NOIR_VERSION}"
 }
 
 install_bb() {
-  if command -v bb >/dev/null 2>&1; then return; fi
+  if command -v bb >/dev/null 2>&1 \
+    && [[ "$(bb --version)" == "${BB_VERSION}" ]]; then
+    return
+  fi
 
   echo "• installing bb ${BB_VERSION}"
   mkdir -p "$HOME/.bb/bin"
@@ -41,7 +49,9 @@ install_bb() {
   tar -xzf /tmp/bb.tar.gz -C "$HOME/.bb/bin"
   chmod +x "$HOME/.bb/bin/bb"
   export PATH="$HOME/.bb/bin:$PATH"
-  [ -n "${GITHUB_PATH:-}" ] && echo "$HOME/.bb/bin" >> "$GITHUB_PATH"
+  if [[ -n "${GITHUB_PATH:-}" ]]; then
+    echo "$HOME/.bb/bin" >> "$GITHUB_PATH"
+  fi
 }
 
 run_tornado_public_inputs_generation() {
@@ -65,7 +75,7 @@ run_tornado_public_inputs_generation() {
 build_circuit() {
   local name="$1"
   local dir="${ROOT}/${name}"
-  local nargo_bin bb_bin project_name json gz
+  local nargo_bin bb_bin nargo_version bb_version project_name json gz
 
   [[ -f "${dir}/Nargo.toml" ]] || {
     echo "skip ${name} (no Nargo.toml)"
@@ -83,6 +93,18 @@ build_circuit() {
   bb_bin="${BB:-$(command -v bb || true)}"
   if [[ -z "${nargo_bin}" || -z "${bb_bin}" ]]; then
     echo "missing nargo or bb in PATH"
+    popd >/dev/null
+    exit 1
+  fi
+  nargo_version="$("${nargo_bin}" --version)"
+  bb_version="$("${bb_bin}" --version)"
+  if [[ "${nargo_version}" != *"nargo version = ${NOIR_VERSION}"* ]]; then
+    echo "nargo version mismatch: expected ${NOIR_VERSION}"
+    popd >/dev/null
+    exit 1
+  fi
+  if [[ "${bb_version}" != "${BB_VERSION}" ]]; then
+    echo "bb version mismatch: expected ${BB_VERSION}"
     popd >/dev/null
     exit 1
   fi
@@ -119,6 +141,29 @@ build_circuit() {
     --output_path target \
     --output_format bytes_and_fields
 
+  # Generate a matching UltraKeccakZK proof alongside the legacy non-ZK
+  # fixture. The verification key is flavor-independent in bb v0.87, but is
+  # emitted into the companion directory to keep each fixture self-contained.
+  if [[ "${GENERATE_ZK:-1}" != "0" ]]; then
+    echo "=== Building ${name} (UltraKeccakZK) ==="
+    mkdir -p target/zk
+    "${bb_bin}" prove \
+      --scheme ultra_honk \
+      --oracle_hash keccak \
+      --zk \
+      --bytecode_path "${json}" \
+      --witness_path "${gz}" \
+      --output_path target/zk \
+      --output_format bytes_and_fields
+
+    "${bb_bin}" write_vk \
+      --scheme ultra_honk \
+      --oracle_hash keccak \
+      --bytecode_path "${json}" \
+      --output_path target/zk \
+      --output_format bytes_and_fields
+  fi
+
   if [[ "${name}" == "tornado" && "${GENERATE_PROVER:-1}" != "0" ]]; then
     echo "=== Generating E2E artifacts for tornado ==="
     (
@@ -136,6 +181,23 @@ build_circuit() {
       --witness_path "${gz}" \
       --output_path target/e2e \
       --output_format bytes_and_fields
+    if [[ "${GENERATE_ZK:-1}" != "0" ]]; then
+      mkdir -p target/e2e/zk
+      "${bb_bin}" prove \
+        --scheme ultra_honk \
+        --oracle_hash keccak \
+        --zk \
+        --bytecode_path "${json}" \
+        --witness_path "${gz}" \
+        --output_path target/e2e/zk \
+        --output_format bytes_and_fields
+      "${bb_bin}" write_vk \
+        --scheme ultra_honk \
+        --oracle_hash keccak \
+        --bytecode_path "${json}" \
+        --output_path target/e2e/zk \
+        --output_format bytes_and_fields
+    fi
   fi
 
   if [[ -d target/vk_fields.json && -f target/vk_fields.json/vk_fields.json ]]; then

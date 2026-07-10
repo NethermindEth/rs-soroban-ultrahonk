@@ -5,7 +5,9 @@
 //! the tampered input.
 
 use soroban_sdk::{testutils::Ledger, Bytes, Env};
-use ultrahonk_soroban_verifier::{UltraHonkVerifier, VkLoadError};
+use ultrahonk_soroban_verifier::{
+    field::Fr, verifier::VerifyError, ProofFlavor, UltraHonkVerifier, VkLoadError,
+};
 use ultrahonk_test_utils::{mutate_byte, truncate, Fixture};
 
 // ---------------------------------------------------------------------------
@@ -57,8 +59,7 @@ fn mutated_proof_fib_chain_fails() {
 }
 
 // =========================================================================
-// 2. Mutated VK — new() or verify() must fail (or the Soroban host panics
-//    with "point not on curve" when the corrupted G1 coordinate hits BN254)
+// 2. Mutated VK — new() or verify() must fail.
 // =========================================================================
 
 #[test]
@@ -128,6 +129,21 @@ fn mutated_vk_fib_chain_fails() {
             "unexpected panic: {msg}"
         );
     }
+}
+
+#[test]
+fn malformed_vk_point_returns_invalid_parameters() {
+    let env = test_env();
+    let f = Fixture::load("simple_circuit");
+    let mut bad_vk = f.vk.clone();
+    // The first uncompressed G1 point follows the 32-byte VK header.
+    bad_vk[32..96].fill(0xff);
+    let vk = Bytes::from_slice(&env, &bad_vk);
+
+    assert!(matches!(
+        UltraHonkVerifier::new(&env, &vk),
+        Err(VkLoadError::InvalidParameters)
+    ));
 }
 
 // =========================================================================
@@ -503,6 +519,142 @@ fn empty_public_inputs_when_expected_nonzero_fails() {
         v.verify(&env, &proof, &pi).is_err(),
         "empty public inputs when circuit expects nonzero must fail"
     );
+}
+
+#[test]
+fn noncanonical_public_input_is_rejected_before_proof_checks() {
+    let env = test_env();
+    let f = Fixture::load("simple_circuit");
+    let proof = Bytes::from_slice(&env, &f.proof);
+    let vk = Bytes::from_slice(&env, &f.vk);
+    let public_inputs = Bytes::from_array(&env, &Fr::MODULUS_BYTES);
+
+    let verifier = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
+    assert!(matches!(
+        verifier.verify(&env, &proof, &public_inputs),
+        Err(VerifyError::InvalidInput)
+    ));
+}
+
+// =========================================================================
+// UltraKeccakZK proof checks
+// =========================================================================
+
+#[test]
+fn zk_libra_sum_mutation_fails() {
+    let env = test_env();
+    let f = Fixture::load_zk("simple_circuit");
+    // 16 PPO fields + 8 G1 commitments + the Libra concatenation commitment.
+    let bad_proof = mutate_byte(&f.proof, 1664, 0x01);
+    let proof = Bytes::from_slice(&env, &bad_proof);
+    let vk = Bytes::from_slice(&env, &f.vk);
+    let pi = Bytes::from_slice(&env, &f.public_inputs);
+
+    let verifier = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
+    assert!(verifier.verify(&env, &proof, &pi).is_err());
+}
+
+#[test]
+fn zk_libra_opening_mutation_fails() {
+    let env = test_env();
+    let f = Fixture::load_zk("simple_circuit");
+    // First of the four SmallSubgroupIPA evaluations.
+    let bad_proof = mutate_byte(&f.proof, 15_840, 0x01);
+    let proof = Bytes::from_slice(&env, &bad_proof);
+    let vk = Bytes::from_slice(&env, &f.vk);
+    let pi = Bytes::from_slice(&env, &f.public_inputs);
+
+    let verifier = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
+    assert!(verifier.verify(&env, &proof, &pi).is_err());
+}
+
+#[test]
+fn zk_noncanonical_g1_limb_padding_is_rejected() {
+    let env = test_env();
+    let f = Fixture::load_zk("simple_circuit");
+    // Byte 512 is unused high padding in w1's low x-coordinate limb.
+    let bad_proof = mutate_byte(&f.proof, 512, 0x01);
+    let proof = Bytes::from_slice(&env, &bad_proof);
+    let vk = Bytes::from_slice(&env, &f.vk);
+    let pi = Bytes::from_slice(&env, &f.public_inputs);
+
+    let verifier = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
+    assert!(matches!(
+        verifier.verify(&env, &proof, &pi),
+        Err(VerifyError::InvalidInput)
+    ));
+}
+
+#[test]
+fn zk_noncanonical_scalar_encoding_is_rejected() {
+    let env = test_env();
+    let f = Fixture::load_zk("simple_circuit");
+    let mut bad_proof = f.proof.clone();
+    // Libra:Sum follows 16 PPO words, eight G1s, and one Libra G1.
+    bad_proof[1664..1696].copy_from_slice(&Fr::MODULUS_BYTES);
+    let proof = Bytes::from_slice(&env, &bad_proof);
+    let vk = Bytes::from_slice(&env, &f.vk);
+    let pi = Bytes::from_slice(&env, &f.public_inputs);
+
+    let verifier = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
+    assert!(matches!(
+        verifier.verify(&env, &proof, &pi),
+        Err(VerifyError::InvalidInput)
+    ));
+}
+
+#[test]
+fn zk_malformed_g1_returns_error_instead_of_trapping() {
+    let env = test_env();
+    let f = Fixture::load_zk("simple_circuit");
+    let mut bad_proof = f.proof.clone();
+    let tail = bad_proof.len() - 128;
+    bad_proof[tail..].fill(0xff);
+    let proof = Bytes::from_slice(&env, &bad_proof);
+    let vk = Bytes::from_slice(&env, &f.vk);
+    let pi = Bytes::from_slice(&env, &f.public_inputs);
+
+    let verifier = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
+    assert!(matches!(
+        verifier.verify(&env, &proof, &pi),
+        Err(VerifyError::InvalidInput)
+    ));
+}
+
+#[test]
+fn zk_canonical_but_off_curve_g1_is_rejected() {
+    let env = test_env();
+    let f = Fixture::load_zk("simple_circuit");
+    let mut bad_proof = f.proof.clone();
+    let tail = bad_proof.len() - 128;
+    bad_proof[tail..].fill(0);
+    // Canonical limb encoding of (x, y) = (1, 1), which is not on y^2=x^3+3.
+    bad_proof[tail + 31] = 1;
+    bad_proof[tail + 64 + 31] = 1;
+    let proof = Bytes::from_slice(&env, &bad_proof);
+    let vk = Bytes::from_slice(&env, &f.vk);
+    let pi = Bytes::from_slice(&env, &f.public_inputs);
+
+    let verifier = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
+    assert!(matches!(
+        verifier.verify(&env, &proof, &pi),
+        Err(VerifyError::InvalidInput)
+    ));
+}
+
+#[test]
+fn explicit_flavor_rejects_zk_proof_as_non_zk() {
+    let env = test_env();
+    let f = Fixture::load_zk("simple_circuit");
+    let proof = Bytes::from_slice(&env, &f.proof);
+    let vk = Bytes::from_slice(&env, &f.vk);
+    let pi = Bytes::from_slice(&env, &f.public_inputs);
+
+    let verifier = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
+    assert!(matches!(
+        verifier.verify_with_flavor(&env, &proof, &pi, ProofFlavor::UltraKeccak),
+        Err(ultrahonk_soroban_verifier::verifier::VerifyError::InvalidInput)
+    ));
 }
 
 // =========================================================================

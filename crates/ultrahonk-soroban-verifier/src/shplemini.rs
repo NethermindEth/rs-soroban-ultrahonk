@@ -4,7 +4,7 @@
 //! MSM that accumulates unshifted/shifted claims, Gemini fold evaluations, and
 //! the constant term, then performs a BN254 pairing check.
 //!
-//! BB reference (v0.82.2):
+//! BB reference (v0.87.0):
 //!   - `commitment_schemes/shplonk/shplemini.hpp::ShpleminiVerifier_::compute_batch_opening_claim`
 //!   - `commitment_schemes/kzg/kzg.hpp::KZG::reduce_verify_batch_opening_claim`
 

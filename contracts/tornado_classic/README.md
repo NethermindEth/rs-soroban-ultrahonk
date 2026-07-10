@@ -6,7 +6,7 @@ Scope
 - Educational sample: no token flow; proof/key artifacts are generated locally.
 
 Layout
-- `circuit/`: Noir project + scripts to build proof artifacts (`target/vk`, `target/vk_fields.json`, `proof`, `public_inputs`).
+- `circuits/tornado/`: Noir project and generated non-ZK (`target/`) and ZK (`target/zk/`) artifacts.
 - `contracts/`: Rust tests wiring `UltraHonkVerifierContract` and `MixerContract` in a simulated Soroban environment.
 
 Requirements
@@ -17,17 +17,29 @@ Requirements
 
 Generate ZK Artifacts
 ```bash
-cd tornado_classic/circuit
-scripts/gen_artifacts.sh   # produces target/{vk,proof,public_inputs,…}
+just build-circuits tornado
+# produces circuits/tornado/target/zk/{vk,proof,public_inputs,...}
 ```
 
 Run Contract Tests (includes real proof verification)
 ```bash
-cargo test --manifest-path tornado_classic/contracts/Cargo.toml --features testutils -- --nocapture
+cargo test --manifest-path contracts/tornado_classic/contracts/Cargo.toml --features testutils -- --nocapture
 ```
+
+Run the production-shaped release-Wasm ZK budget test with:
+
+```bash
+cargo test -p tornado_classic_contracts --release --features wasm-cost \
+  print_wasm_budget_for_deposit_and_withdraw -- --nocapture
+```
+
+With the protocol-26 SDK cost model, the final ZK withdrawal path measured
+about 135.1M CPU instructions and 7.17MB memory. Network limits are mutable;
+query the target network before deployment with `stellar network settings`.
+
 Key checks:
 - `deposit` appends to the frontier and updates the on-chain root.
-- `withdraw` takes separate `public_inputs` (two 32-byte values ordered `[root, nullifier_hash]`) and a `proof` blob (456 fields); the verifier address is fixed at deploy-time.
+- `withdraw` takes separate `public_inputs` (two 32-byte values ordered `[root, nullifier_hash]`) and requires a 507-field UltraKeccakZK proof; the verifier address is fixed at deploy-time.
 - Invalid proofs or double spends fail; root overrides are only exposed in test builds.
 
 Quick Usage Notes

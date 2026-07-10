@@ -4,7 +4,7 @@
 //! polynomial identity derived from all 26 subrelations.  Uses barycentric
 //! evaluation with precomputed Lagrange denominators and batch inversion.
 //!
-//! BB reference (v0.82.2): `sumcheck/sumcheck.hpp::SumcheckVerifier::verify`
+//! BB reference (v0.87.0): `sumcheck/sumcheck.hpp::SumcheckVerifier::verify`
 //!                        `sumcheck/sumcheck_round.hpp::SumcheckVerifierRound`
 
 use core::array;

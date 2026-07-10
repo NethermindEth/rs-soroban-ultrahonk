@@ -23,6 +23,19 @@ impl Fixture {
             .join("../../circuits")
             .join(name)
             .join("target");
+        Self::load_from_root(root)
+    }
+
+    /// Loads the companion UltraKeccakZK artifacts generated in `target/zk`.
+    pub fn load_zk(name: &str) -> Self {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../circuits")
+            .join(name)
+            .join("target/zk");
+        Self::load_from_root(root)
+    }
+
+    fn load_from_root(root: PathBuf) -> Self {
         Self {
             proof: fs::read(root.join("proof")).expect("missing proof"),
             vk: fs::read(root.join("vk")).expect("missing vk"),
