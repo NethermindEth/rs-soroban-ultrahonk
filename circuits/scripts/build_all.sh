@@ -2,13 +2,19 @@
 set -euo pipefail
 
 NOIR_VERSION="1.0.0-beta.9"
-BB_VERSION="v0.87.0"
+BB_VERSION="0.87.0"
+BB_RELEASE_TAG="v${BB_VERSION}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REPO_ROOT="$(cd "${ROOT}/.." && pwd)"
 
 export PATH="$HOME/.nargo/bin:$HOME/.bb/bin:$PATH"
+
+bb_version_matches() {
+  local actual="${1#v}"
+  [[ "${actual}" == "${BB_VERSION}" ]]
+}
 
 install_nargo() {
   if command -v nargo >/dev/null 2>&1 \
@@ -28,11 +34,11 @@ install_nargo() {
 
 install_bb() {
   if command -v bb >/dev/null 2>&1 \
-    && [[ "$(bb --version)" == "${BB_VERSION}" ]]; then
+    && bb_version_matches "$(bb --version)"; then
     return
   fi
 
-  echo "• installing bb ${BB_VERSION}"
+  echo "• installing bb ${BB_RELEASE_TAG}"
   mkdir -p "$HOME/.bb/bin"
 
   uname_s=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -44,7 +50,7 @@ install_bb() {
     *)             echo "unsupported platform"; exit 1 ;;
   esac
 
-  url="https://github.com/AztecProtocol/aztec-packages/releases/download/${BB_VERSION}/${file}"
+  url="https://github.com/AztecProtocol/aztec-packages/releases/download/${BB_RELEASE_TAG}/${file}"
   curl -L "$url" -o /tmp/bb.tar.gz
   tar -xzf /tmp/bb.tar.gz -C "$HOME/.bb/bin"
   chmod +x "$HOME/.bb/bin/bb"
@@ -103,8 +109,8 @@ build_circuit() {
     popd >/dev/null
     exit 1
   fi
-  if [[ "${bb_version}" != "${BB_VERSION}" ]]; then
-    echo "bb version mismatch: expected ${BB_VERSION}"
+  if ! bb_version_matches "${bb_version}"; then
+    echo "bb version mismatch: expected ${BB_RELEASE_TAG} or ${BB_VERSION}, got ${bb_version}"
     popd >/dev/null
     exit 1
   fi

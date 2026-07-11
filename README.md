@@ -14,9 +14,9 @@ rustup target add wasm32v1-none
 ```
 
 ### 2. Stellar CLI
-Install the Soroban/Stellar CLI. We recommend using a recent version:
+Install the Stellar CLI. We recommend using the latest stable version:
 ```bash
-cargo install --locked stellar-cli@^3.2.0
+cargo install --locked stellar-cli
 ```
 
 ### 3. Noir and Barretenberg
@@ -39,6 +39,10 @@ For the helper scripts used to invoke verified transactions (`scripts/invoke_ult
 Docker is required to run the local Standalone Network container (`stellar container start`).
 - [Install Docker Desktop](https://www.docker.com/products/docker-desktop/) or Docker Engine depending on your system.
 
+The local development and E2E workflows target **Stellar Protocol 27**. They
+start the `stellar/quickstart:testing` image with `--protocol-version 27` so
+RPC simulation and ledger execution use the same protocol generation.
+
 ### 6. `just` (task runner)
 We use [`just`](https://github.com/casey/just) as a convenient task runner for discoverability. Install it via cargo:
 ```bash
@@ -51,7 +55,7 @@ Once installed, run `just --list` to see all available commands.
 Run `just --list` at any time to see available commands. The common workflow is:
 
 ### 1. Start the Network
-Start a local Stellar network in a Docker container and configure your environment:
+Start a local Stellar Protocol 27 network in a Docker container and configure your environment:
 ```bash
 just start
 ```

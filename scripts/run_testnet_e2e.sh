@@ -19,13 +19,11 @@ echo -e "${BLUE}Network: $STELLAR_NETWORK_NAME${NC}"
 echo -e "${BLUE}RPC:     $STELLAR_RPC_URL${NC}"
 echo -e "${BLUE}Account: $STELLAR_SOURCE_ACCOUNT${NC}"
 
-# 1. Register network profile + ensure account exists/funded via friendbot.
-"$SCRIPT_DIR/fund_account.sh"
-
-# 2. Build & deploy contract to testnet.
+# 1. Build and deploy the contract. deploy.sh owns account setup/funding so
+# testnet friendbot is called only once per E2E run.
 "$SCRIPT_DIR/deploy.sh"
 
-# 3. Verify proof on-chain. Cost measurement is skipped by default on testnet
+# 2. Verify proof on-chain. Cost measurement is skipped by default on testnet
 #    because it requires extracting the source-account secret. Re-enable with
 #    MEASURE_COSTS=1.
 "$SCRIPT_DIR/verify.sh"

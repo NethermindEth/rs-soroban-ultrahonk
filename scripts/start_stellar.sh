@@ -3,8 +3,13 @@ set -e
 
 source "$(dirname "${BASH_SOURCE[0]}")/config.sh"
 
-echo -e "${BLUE}Starting Stellar localnet container ($STELLAR_CONTAINER_NAME)...${NC}"
-stellar container start -t future --name "$STELLAR_CONTAINER_NAME" --limits unlimited "$@"
+echo -e "${BLUE}Starting Stellar Protocol 27 localnet container ($STELLAR_CONTAINER_NAME)...${NC}"
+stellar container start \
+  -t testing \
+  --protocol-version 27 \
+  --name "$STELLAR_CONTAINER_NAME" \
+  --limits unlimited \
+  "$@"
 
 echo -e "${BLUE}Configuring network profile ($STELLAR_NETWORK_NAME)...${NC}"
 stellar network add "$STELLAR_NETWORK_NAME" \
