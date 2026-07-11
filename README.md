@@ -14,9 +14,9 @@ rustup target add wasm32v1-none
 ```
 
 ### 2. Stellar CLI
-Install the Soroban/Stellar CLI. We recommend using a recent version:
+Install the Stellar CLI. We recommend using the latest stable version:
 ```bash
-cargo install --locked stellar-cli@^3.2.0
+cargo install --locked stellar-cli
 ```
 
 ### 3. Noir and Barretenberg
@@ -39,6 +39,10 @@ For the helper scripts used to invoke verified transactions (`scripts/invoke_ult
 Docker is required to run the local Standalone Network container (`stellar container start`).
 - [Install Docker Desktop](https://www.docker.com/products/docker-desktop/) or Docker Engine depending on your system.
 
+The local development and E2E workflows target **Stellar Protocol 27**. They
+start the `stellar/quickstart:testing` image with `--protocol-version 27` so
+RPC simulation and ledger execution use the same protocol generation.
+
 ### 6. `just` (task runner)
 We use [`just`](https://github.com/casey/just) as a convenient task runner for discoverability. Install it via cargo:
 ```bash
@@ -51,7 +55,7 @@ Once installed, run `just --list` to see all available commands.
 Run `just --list` at any time to see available commands. The common workflow is:
 
 ### 1. Start the Network
-Start a local Stellar network in a Docker container and configure your environment:
+Start a local Stellar Protocol 27 network in a Docker container and configure your environment:
 ```bash
 just start
 ```
@@ -103,13 +107,10 @@ The underlying shell scripts in `scripts/` are still available if you prefer to 
 
 ## Circuits
 
-All Noir circuits live under `/circuits/`. Each circuit keeps its source files and generated artifacts together, with build outputs under `circuits/<name>/target/`.
-
-See [`circuits/README.md`](circuits/README.md) for the circuit layout, rebuild commands, and how to add a new circuit.
-
-## Circuits
-
-All Noir circuits live under `/circuits/`. Each circuit keeps its source files and generated artifacts together, with build outputs under `circuits/<name>/target/`.
+All Noir circuits live under `/circuits/`. Each build emits legacy non-ZK
+artifacts under `circuits/<name>/target/` and UltraKeccakZK artifacts under
+`circuits/<name>/target/zk/`. The localnet and identity E2E scripts use the ZK
+artifacts by default.
 
 See [`circuits/README.md`](circuits/README.md) for the circuit layout, rebuild commands, and how to add a new circuit.
 
@@ -135,12 +136,6 @@ Notes:
 - Cost measurement (the JS report) is skipped on testnet by default because it extracts the source-account secret. Re-enable with `MEASURE_COSTS=1 just verify`. The default report is simulation-only; add `MEASURE_SUBMIT=1` to also submit a separate measurement transaction and print the actual `feeCharged` from the ledger (real cost, costs ~0.014 XLM per run).
 - `mainnet` is supported by config but `just fund` will refuse to call friendbot — fund the source account out-of-band before running `just deploy`.
 
-## Circuits
-
-All Noir circuits live under `/circuits/`. Each circuit keeps its source files and generated artifacts together, with build outputs under `circuits/<name>/target/`.
-
-See [`circuits/README.md`](circuits/README.md) for the circuit layout, rebuild commands, and how to add a new circuit.
-
 ## Advanced usage
 
 ### Use the JS helper script
@@ -151,7 +146,7 @@ Expects a dataset folder with `public_inputs`, `proof` (the VK is already on-cha
 cd scripts/invoke_ultrahonk
 npm install
 npx ts-node invoke_ultrahonk.ts invoke \
-  --dataset ../../circuits/simple_circuit/target \
+  --dataset ../../circuits/simple_circuit/target/zk \
   --contract-id $(cat ../../.contract_id) \
   --network local \
   --source-account alice \

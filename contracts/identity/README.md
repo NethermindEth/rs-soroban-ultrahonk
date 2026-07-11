@@ -32,13 +32,15 @@ Stores the UltraHonk verification key in contract instance storage. This VK is t
 fn prove_identity(env: Env, public_inputs: Bytes, proof_bytes: Bytes) -> Result<(), Error>
 ```
 
-Verifies a proof that the caller knows the preimage for the given public hash.
+Verifies an UltraKeccakZK proof that the caller knows the preimage for the given
+public hash. The identity entrypoint deliberately rejects non-ZK UltraHonk
+proofs even though the underlying verifier library supports both flavors.
 
 **Errors:**
 - `VkNotSet` — contract was not initialized with a VK
 - `VkInvalidLength` — VK byte slice does not match the expected exact length
 - `VkInvalidParameters` — VK header contains out-of-range structural parameters
-- `ProofParseError` — proof length does not match `PROOF_BYTES` (14,592)
+- `ProofParseError` — proof is not a 16,224-byte UltraKeccakZK proof
 - `VerificationFailed` — proof is invalid for the given public inputs
 
 ## Trust Model
@@ -64,7 +66,9 @@ Verifies a proof that the caller knows the preimage for the given public hash.
 └─────────────────┘     └──────────────────────┘     └─────────────────┘
 ```
 
-The contract itself is ~24KB WASM. Verification costs ~81M CPU instructions on Soroban Protocol 26.
+The current ZK-enabled release Wasm is about 66KB. Verification cost depends on
+the circuit and ledger limits; measure the generated ZK artifact on the target
+network before deployment.
 
 ## End-to-End Flow
 
@@ -74,8 +78,8 @@ The contract itself is ~24KB WASM. Verification costs ~81M CPU instructions on S
 just build-circuits identity
 ```
 
-This generates in `circuits/identity/target/`:
-- `proof` — the UltraHonk proof (14,592 bytes)
+This generates ZK artifacts in `circuits/identity/target/zk/`:
+- `proof` — the UltraKeccakZK proof (16,224 bytes)
 - `vk` — the verification key
 - `public_inputs` — the public hash (32 bytes)
 
@@ -102,7 +106,7 @@ cd scripts/invoke_identity
 npm install
 npx ts-node invoke_identity.ts prove \
   --contract-id <CONTRACT_ID> \
-  --dataset ../../circuits/identity/target \
+  --dataset ../../circuits/identity/target/zk \
   --network local \
   --source-account alice \
   --send yes
@@ -116,7 +120,8 @@ Run the unit test (in-memory Soroban environment, no network needed):
 cargo test -p identity
 ```
 
-The test loads circuit artifacts from `circuits/identity/target/` using `ultrahonk-test-utils::Fixture`.
+The happy-path test loads the ZK artifacts from
+`circuits/identity/target/zk/` using `ultrahonk-test-utils::Fixture`.
 
 ## Customizing the circuit
 

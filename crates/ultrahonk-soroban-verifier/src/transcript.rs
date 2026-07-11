@@ -1,12 +1,11 @@
 //! Fiat–Shamir transcript for UltraHonk.
 //!
 //! This module implements the Keccak-256 based transcript used by the native
-//! Barretenberg `UltraFlavor` verifier (v0.82.2).  Every challenge round,
+//! Barretenberg v0.87.0 `UltraKeccakFlavor` verifier. Every challenge round,
 //! serialization step, and splitting primitive is documented with its BB source
 //! counterpart so that upgrades to BB can be re-audited mechanically.
 //!
-//! BB reference: `aztec-packages-v0.82.2/barretenberg/cpp/src/barretenberg/transcript/transcript.hpp`
-//!               (`KeccakTranscriptParams` / `NativeTranscriptParams`).
+//! BB reference: `dsl/acir_proofs/honk_contract.hpp::TranscriptLib`.
 
 use crate::trace;
 use crate::{

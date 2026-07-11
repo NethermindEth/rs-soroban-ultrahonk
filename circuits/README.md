@@ -37,13 +37,25 @@ After a successful build, `circuits/<name>/target/` contains:
 - `vk` and `vk_fields.json`
 - `public_inputs` and `public_inputs_fields.json`
 
+Those top-level artifacts are the 456-field non-ZK UltraKeccak flavor. A
+second self-contained set is written under `target/zk/` using `bb prove --zk`:
+
+- `proof` — 507-field UltraKeccakZK proof
+- `vk` — the same flavor-independent verification key
+- `public_inputs`
+- matching `*_fields.json` files
+
+Set `GENERATE_ZK=0` to skip companion ZK generation. Existing `target/zk`
+artifacts are not refreshed in that mode; do not use them as outputs of the
+current build.
+
 ## Add A Circuit
 
 1. Create `circuits/<name>/src/main.nr`.
 2. Add `circuits/<name>/Nargo.toml`.
 3. Add or generate `circuits/<name>/Prover.toml`.
 4. Run `./circuits/scripts/build_all.sh <name>`.
-5. Point tests or example contracts at `circuits/<name>/target/`.
+5. Point privacy-preserving examples at `circuits/<name>/target/zk/`.
 
 For `tornado`, the build script regenerates `Prover.toml` through `contracts/tornado_classic/contracts/examples/populate_publics.rs` by default.
 Set `GENERATE_PROVER=0` to keep existing prover inputs.

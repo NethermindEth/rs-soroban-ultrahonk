@@ -6,7 +6,7 @@ use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, crypto::BnScalar, symbol_short, Address,
     Bytes, BytesN, Env, IntoVal, InvokeError, Symbol, Val, Vec as SorobanVec, U256,
 };
-use ultrahonk_soroban_verifier::PROOF_BYTES;
+use ultrahonk_soroban_verifier::ProofFlavor;
 
 #[contract]
 pub struct MixerContract;
@@ -182,7 +182,7 @@ impl MixerContract {
     /// Verifies a proof with the stored verification key and marks the nullifier spent.
     /// The public inputs are ordered as `[root, nullifier_hash]`.
     pub fn withdraw(env: Env, public_inputs: Bytes, proof_bytes: Bytes) -> Result<(), MixerError> {
-        if proof_bytes.len() as usize != PROOF_BYTES {
+        if proof_bytes.len() as usize != ProofFlavor::UltraKeccakZk.proof_bytes() {
             return Err(MixerError::VerificationFailed);
         }
         // Interpret public inputs as `[root, nullifier_hash]`.
@@ -231,10 +231,10 @@ impl MixerContract {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, all(feature = "testutils", not(target_family = "wasm"))))]
 #[contractimpl]
 impl MixerContract {
-    /// Test-only helper to override the stored root. Only compiled into test builds.
+    /// Test-only helper to override the stored root. Never exported by Wasm builds.
     pub fn set_root(env: Env, root: BytesN<32>) -> Result<(), MixerError> {
         env.storage().instance().set(&key_root(), &root);
         Ok(())

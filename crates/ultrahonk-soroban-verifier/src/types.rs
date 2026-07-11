@@ -1,9 +1,9 @@
 //! Core type definitions for the UltraHonk verifier.
 //!
 //! `VerificationKey`, `Proof`, `Transcript`, and `RelationParameters` layouts
-//! are derived from Barretenberg `UltraFlavor` v0.82.2.
+//! are derived from Barretenberg v0.87.0 `UltraKeccakFlavor`.
 //!
-//! BB reference: `barretenberg/flavor/ultra_flavor.hpp`
+//! BB reference: `stdlib_circuit_builders/ultra_flavor.hpp`
 
 use crate::field::Fr;
 use soroban_sdk::crypto::bn254::Bn254G1Affine;

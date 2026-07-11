@@ -4,7 +4,7 @@
 //! `oink_verifier.cpp`, and `decider_verifier.cpp`.  The Rust code inlines the
 //! Oink and Decider steps into a single `verify` method.
 //!
-//! BB reference (v0.82.2):
+//! BB reference (v0.87.0):
 //!   - `ultra_honk/ultra_verifier.cpp::UltraVerifier_::verify_proof`
 //!   - `ultra_honk/oink_verifier.cpp::OinkVerifier::verify`
 //!   - `ultra_honk/decider_verifier.cpp::DeciderVerifier_::verify`
@@ -16,6 +16,11 @@ use crate::{
     transcript::generate_transcript,
     types::PAIRING_POINTS_SIZE,
     utils::{load_proof, load_vk_from_bytes},
+    zk_shplemini::verify_zk_shplemini,
+    zk_sumcheck::verify_zk_sumcheck,
+    zk_transcript::generate_zk_transcript,
+    zk_utils::load_zk_proof,
+    PROOF_BYTES, ZK_PROOF_BYTES,
 };
 use soroban_sdk::{Bytes, Env};
 
@@ -41,6 +46,32 @@ pub enum VerifyError {
     ShplonkFailed,
 }
 
+/// UltraHonk proof flavors accepted by this verifier.
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum ProofFlavor {
+    /// Barretenberg v0.87 `UltraKeccakFlavor` (non-zero-knowledge).
+    UltraKeccak,
+    /// Barretenberg v0.87 `UltraKeccakZKFlavor` (Libra + hiding polynomial).
+    UltraKeccakZk,
+}
+
+impl ProofFlavor {
+    pub const fn proof_bytes(self) -> usize {
+        match self {
+            Self::UltraKeccak => PROOF_BYTES,
+            Self::UltraKeccakZk => ZK_PROOF_BYTES,
+        }
+    }
+
+    pub fn from_proof_len(len: usize) -> Option<Self> {
+        match len {
+            PROOF_BYTES => Some(Self::UltraKeccak),
+            ZK_PROOF_BYTES => Some(Self::UltraKeccakZk),
+            _ => None,
+        }
+    }
+}
+
 pub struct UltraHonkVerifier {
     env: Env,
     vk: crate::types::VerificationKey,
@@ -54,6 +85,11 @@ impl UltraHonkVerifier {
         }
     }
 
+    /// Load a non-recursive UltraHonk verification key.
+    ///
+    /// The v0.87 byte format has no recursion discriminator. Callers must not
+    /// supply a recursive VK: this verifier does not aggregate its pairing
+    /// accumulator.
     pub fn new(env: &Env, vk_bytes: &Bytes) -> Result<Self, VkLoadError> {
         load_vk_from_bytes(env, vk_bytes).map(|vk| Self::new_with_vk(env, vk))
     }
@@ -63,11 +99,11 @@ impl UltraHonkVerifier {
         &self.vk
     }
 
-    /// Verify an UltraHonk proof against the loaded VK.
+    /// Verify an UltraKeccak or UltraKeccakZK proof against the loaded VK.
     ///
     /// Steps (matching BB verifier flow):
-    /// 1. Parse proof bytes.
-    /// 2. Validate public-input length against VK metadata.
+    /// 1. Select the proof flavor and validate public inputs against VK metadata.
+    /// 2. Parse and validate the canonical proof encoding.
     /// 3. Generate Fiat–Shamir challenges (Oink rounds).
     /// 4. Compute `public_inputs_delta` (grand-product permutation argument).
     /// 5. Run sumcheck verification.
@@ -80,10 +116,37 @@ impl UltraHonkVerifier {
         proof_bytes: &Bytes,
         public_inputs_bytes: &Bytes,
     ) -> Result<(), VerifyError> {
-        // 1) parse proof
-        let proof = load_proof(env, proof_bytes).map_err(|_| VerifyError::InvalidInput)?;
+        let flavor = ProofFlavor::from_proof_len(proof_bytes.len() as usize)
+            .ok_or(VerifyError::InvalidInput)?;
+        self.verify_with_flavor(env, proof_bytes, public_inputs_bytes, flavor)
+    }
 
-        // 2) sanity on public inputs (length and VK metadata if present)
+    /// Verify a proof while requiring an explicit flavor.
+    pub fn verify_with_flavor(
+        &self,
+        env: &Env,
+        proof_bytes: &Bytes,
+        public_inputs_bytes: &Bytes,
+        flavor: ProofFlavor,
+    ) -> Result<(), VerifyError> {
+        if proof_bytes.len() as usize != flavor.proof_bytes() {
+            return Err(VerifyError::InvalidInput);
+        }
+        let provided = self.validate_public_input_length(public_inputs_bytes)?;
+        match flavor {
+            ProofFlavor::UltraKeccak => {
+                self.verify_non_zk(env, proof_bytes, public_inputs_bytes, provided)
+            }
+            ProofFlavor::UltraKeccakZk => {
+                self.verify_zk(env, proof_bytes, public_inputs_bytes, provided)
+            }
+        }
+    }
+
+    fn validate_public_input_length(
+        &self,
+        public_inputs_bytes: &Bytes,
+    ) -> Result<u64, VerifyError> {
         if !public_inputs_bytes.len().is_multiple_of(32) {
             return Err(VerifyError::InvalidInput);
         }
@@ -96,6 +159,34 @@ impl UltraHonkVerifier {
         if expected != provided {
             return Err(VerifyError::InvalidInput);
         }
+
+        // The transcript hashes the supplied bytes while the arithmetic host
+        // reduces them modulo the BN254 scalar modulus. Requiring the unique
+        // encoding prevents two byte strings from representing the same
+        // circuit public input (critical for nullifier/replay semantics).
+        let mut idx = 0u32;
+        while idx < public_inputs_bytes.len() {
+            let mut value = [0u8; 32];
+            public_inputs_bytes
+                .slice(idx..idx + 32)
+                .copy_into_slice(&mut value);
+            if !Fr::is_canonical_bytes(&value) {
+                return Err(VerifyError::InvalidInput);
+            }
+            idx += 32;
+        }
+        Ok(provided)
+    }
+
+    fn verify_non_zk(
+        &self,
+        env: &Env,
+        proof_bytes: &Bytes,
+        public_inputs_bytes: &Bytes,
+        provided: u64,
+    ) -> Result<(), VerifyError> {
+        // 1) parse proof
+        let proof = load_proof(env, proof_bytes).map_err(|_| VerifyError::InvalidInput)?;
 
         // 3) Fiat–Shamir transcript
         let pis_total = provided + PAIRING_POINTS_SIZE as u64;
@@ -127,6 +218,46 @@ impl UltraHonkVerifier {
 
         // 6) Shplonk
         verify_shplemini(&self.env, &proof, &self.vk, &t)
+            .map_err(|_| VerifyError::ShplonkFailed)?;
+
+        Ok(())
+    }
+
+    fn verify_zk(
+        &self,
+        env: &Env,
+        proof_bytes: &Bytes,
+        public_inputs_bytes: &Bytes,
+        provided: u64,
+    ) -> Result<(), VerifyError> {
+        let proof = load_zk_proof(env, proof_bytes).map_err(|_| VerifyError::InvalidInput)?;
+        let pis_total = provided + PAIRING_POINTS_SIZE as u64;
+        let pub_inputs_offset = self.vk.pub_inputs_offset;
+
+        let mut transcript = generate_zk_transcript(
+            &self.env,
+            &proof,
+            public_inputs_bytes,
+            self.vk.circuit_size,
+            pis_total,
+            pub_inputs_offset,
+        )
+        .map_err(|_| VerifyError::InvalidInput)?;
+
+        transcript.rel_params.public_inputs_delta = Self::compute_public_input_delta(
+            env,
+            public_inputs_bytes,
+            &proof.pairing_point_object,
+            &transcript.rel_params.beta,
+            &transcript.rel_params.gamma,
+            pub_inputs_offset,
+            self.vk.circuit_size,
+        )
+        .map_err(|_| VerifyError::InvalidInput)?;
+
+        verify_zk_sumcheck(env, &proof, &transcript, &self.vk)
+            .map_err(|_| VerifyError::SumcheckFailed)?;
+        verify_zk_shplemini(&self.env, &proof, &self.vk, &transcript)
             .map_err(|_| VerifyError::ShplonkFailed)?;
 
         Ok(())

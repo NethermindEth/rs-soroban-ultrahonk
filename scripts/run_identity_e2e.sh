@@ -43,7 +43,7 @@ fi
 
 CIRCUIT_NAME="identity"
 CIRCUIT_DIR="${ROOT_DIR}/circuits/${CIRCUIT_NAME}"
-TARGET_DIR="${CIRCUIT_DIR}/target"
+TARGET_DIR="${CIRCUIT_DIR}/target/zk"
 CONTRACT_WASM="${ROOT_DIR}/target/wasm32v1-none/release/identity.wasm"
 IDENTITY_CONTRACT_ID_FILE="${ROOT_DIR}/.identity_contract_id"
 

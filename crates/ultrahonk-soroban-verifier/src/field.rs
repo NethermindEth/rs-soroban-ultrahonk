@@ -6,6 +6,20 @@ use soroban_sdk::{bytesn, crypto::bn254::Bn254Fr, BytesN, Env, U256};
 pub struct Fr(pub Bn254Fr);
 
 impl Fr {
+    /// Big-endian modulus of the BN254 scalar field.
+    pub const MODULUS_BYTES: [u8; 32] = [
+        0x30, 0x64, 0x4e, 0x72, 0xe1, 0x31, 0xa0, 0x29, 0xb8, 0x50, 0x45, 0xb6, 0x81, 0x81, 0x58,
+        0x5d, 0x28, 0x33, 0xe8, 0x48, 0x79, 0xb9, 0x70, 0x91, 0x43, 0xe1, 0xf5, 0x93, 0xf0, 0x00,
+        0x00, 0x01,
+    ];
+
+    /// Return whether a big-endian byte string is the unique encoding of a
+    /// BN254 scalar rather than an integer that would be reduced modulo `r`.
+    #[inline(always)]
+    pub fn is_canonical_bytes(value: &[u8; 32]) -> bool {
+        value < &Self::MODULUS_BYTES
+    }
+
     #[inline(always)]
     pub fn zero(env: &Env) -> Self {
         Self(Bn254Fr::from_u256(U256::from_u32(env, 0)))
@@ -200,6 +214,15 @@ impl Neg for &Fr {
 mod tests {
     use super::*;
     use soroban_sdk::Env;
+
+    #[test]
+    fn canonical_scalar_encoding_rejects_modulus_and_larger() {
+        let mut modulus_minus_one = Fr::MODULUS_BYTES;
+        modulus_minus_one[31] -= 1;
+        assert!(Fr::is_canonical_bytes(&modulus_minus_one));
+        assert!(!Fr::is_canonical_bytes(&Fr::MODULUS_BYTES));
+        assert!(!Fr::is_canonical_bytes(&[0xff; 32]));
+    }
 
     #[test]
     fn batch_inverse_round_trip() {

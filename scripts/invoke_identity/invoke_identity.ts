@@ -8,13 +8,13 @@
  * Example (localnet):
  *   npx ts-node invoke_identity.ts prove \
  *       --contract-id CDB... \
- *       --dataset ../../circuits/identity/target \
+ *       --dataset ../../circuits/identity/target/zk \
  *       --network local --source-account alice --send yes
  *
  * Example (testnet):
  *   npx ts-node invoke_identity.ts prove \
  *       --contract-id CDB... \
- *       --dataset ../../circuits/identity/target \
+ *       --dataset ../../circuits/identity/target/zk \
  *       --network testnet --source-account alice --send yes
  */
 
@@ -24,7 +24,7 @@ import { spawn } from 'child_process';
 import { ArgumentParser } from 'argparse';
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
-const DEFAULT_DATASET_DIR = path.resolve(REPO_ROOT, 'circuits', 'identity', 'target');
+const DEFAULT_DATASET_DIR = path.resolve(REPO_ROOT, 'circuits', 'identity', 'target', 'zk');
 
 // === Data loading ============================================================
 

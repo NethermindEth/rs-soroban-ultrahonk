@@ -35,3 +35,13 @@ fn simple_circuit_proof_verifies() -> Result<(), String> {
 fn fib_chain_proof_verifies() -> Result<(), String> {
     run("../../circuits/fib_chain/target")
 }
+
+#[test]
+fn simple_circuit_zk_proof_verifies() -> Result<(), String> {
+    run("../../circuits/simple_circuit/target/zk")
+}
+
+#[test]
+fn fib_chain_zk_proof_verifies() -> Result<(), String> {
+    run("../../circuits/fib_chain/target/zk")
+}

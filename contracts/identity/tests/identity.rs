@@ -16,7 +16,7 @@ fn test_env() -> Env {
 #[test]
 fn identity_proof_verifies() {
     let env = test_env();
-    let f = Fixture::load("identity");
+    let f = Fixture::load_zk("identity");
     let (proof, vk, pi) = f.into_bytes(&env);
 
     let contract_id = env.register(IdentityContract, (vk.clone(),));
@@ -131,7 +131,7 @@ fn prove_identity_with_bad_proof_length_fails() {
 #[test]
 fn prove_identity_with_mutated_proof_fails() {
     let env = test_env();
-    let f = Fixture::load("identity");
+    let f = Fixture::load_zk("identity");
     let (proof, vk, pi) = f.into_bytes(&env);
 
     let contract_id = env.register(IdentityContract, (vk.clone(),));
@@ -143,4 +143,19 @@ fn prove_identity_with_mutated_proof_fails() {
         })
         .expect_err("expected VerificationFailed");
     assert_eq!(err as u32, Error::VerificationFailed as u32);
+}
+
+#[test]
+fn prove_identity_rejects_non_zk_flavor() {
+    let env = test_env();
+    let f = Fixture::load("identity");
+    let (proof, vk, pi) = f.into_bytes(&env);
+    let contract_id = env.register(IdentityContract, (vk,));
+
+    let err = env
+        .as_contract(&contract_id, || {
+            IdentityContract::prove_identity(env.clone(), pi.clone(), proof.clone())
+        })
+        .expect_err("identity must require the ZK flavor");
+    assert_eq!(err as u32, Error::ProofParseError as u32);
 }

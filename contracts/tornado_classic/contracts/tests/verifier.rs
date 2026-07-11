@@ -3,7 +3,7 @@ use soroban_sdk::{Address, Bytes, Env};
 use rs_soroban_ultrahonk::UltraHonkVerifierContract;
 use soroban_env_host::DiagnosticLevel;
 use std::sync::{Mutex, OnceLock};
-use ultrahonk_soroban_verifier::PROOF_BYTES;
+use ultrahonk_soroban_verifier::ZK_PROOF_BYTES;
 
 fn verify_lock() -> &'static Mutex<()> {
     static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -17,11 +17,12 @@ fn verify_proof_with_constructor_vk() {
     env.cost_estimate().budget().reset_unlimited();
     let _ = env.host().set_diagnostic_level(DiagnosticLevel::None);
 
-    let vk_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/vk");
-    let proof_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/proof");
-    let pub_inputs_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/public_inputs");
+    let vk_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/zk/vk");
+    let proof_bin: &[u8] = include_bytes!("../../../../circuits/tornado/target/zk/proof");
+    let pub_inputs_bin: &[u8] =
+        include_bytes!("../../../../circuits/tornado/target/zk/public_inputs");
 
-    assert_eq!(proof_bin.len(), PROOF_BYTES);
+    assert_eq!(proof_bin.len(), ZK_PROOF_BYTES);
 
     let vk_bytes: Bytes = Bytes::from_slice(&env, vk_bin);
     let verifier_id: Address = env.register(UltraHonkVerifierContract, (vk_bytes.clone(),));
