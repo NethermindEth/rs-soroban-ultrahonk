@@ -5,8 +5,15 @@
 //!
 //! BB reference (v0.87.0):
 //!   - `honk/proof_system/types/proof.hpp`
-//!   - `stdlib_circuit_builders/ultra_flavor.hpp::Proof`
-//!   - `stdlib_circuit_builders/ultra_flavor.hpp::VerificationKey_`
+//!   - `ultra_flavor.hpp:110` — `PROOF_LENGTH_WITHOUT_PUB_INPUTS`
+//!   - `ultra_flavor.hpp:683-760` — `Transcript_::{de,}serialize_full_transcript`
+//!   - `ultra_keccak_flavor.hpp:132` — `VerificationKey::MSGPACK_FIELDS`
+//!
+//! Note: there is no `Proof` type in `ultra_flavor.hpp`; the layout is implied by
+//! the length constant and the transcript (de)serialisation order above. And the
+//! key is `UltraKeccakFlavor`'s, *not* `UltraFlavor::VerificationKey`
+//! (`ultra_flavor.hpp:359`) — the latter's `MSGPACK_FIELDS` carries a fifth header
+//! field, `pairing_inputs_public_input_key`, and so has a different byte layout.
 
 use crate::field::Fr;
 use crate::types::{
@@ -120,7 +127,10 @@ pub(crate) fn try_g1_at(env: &Env, blob: &[u8], idx: usize) -> Result<G1Point, P
 /// All field elements are big-endian 32-byte scalars; G1 points use the
 /// `(x_lo, x_hi, y_lo, y_hi)` limb layout (128 bytes each).
 ///
-/// BB: `stdlib_circuit_builders/ultra_flavor.hpp::Proof` (implicit in `BaseTranscript` deserialization)
+/// BB: `ultra_flavor.hpp:110` (`PROOF_LENGTH_WITHOUT_PUB_INPUTS`) and `:683-760`
+/// (`Transcript_::{de,}serialize_full_transcript`). There is no `Proof` type; the
+/// layout is implicit in the length constant and in the order `Transcript_`
+/// serialises and deserialises the full transcript.
 ///
 /// Note (bb v0.87.0): G1 coordinates are encoded as two limbs per coordinate
 /// using the (lo136, hi<=118) split and stored in the order (x_lo, x_hi, y_lo, y_hi).
@@ -286,7 +296,12 @@ pub fn validate_gemini_padding(proof: &Proof, log_n: usize) -> Result<(), &'stat
 /// Layout: 4 big-endian `u64` header fields + 27 G1 commitments (64 bytes each).
 /// The point order matches `PrecomputedEntities` in BB.
 ///
-/// BB: `stdlib_circuit_builders/ultra_flavor.hpp::VerificationKey_`
+/// BB: `ultra_keccak_flavor.hpp:132`
+/// (`UltraKeccakFlavor::VerificationKey::MSGPACK_FIELDS`), whose field order this
+/// mirrors exactly. Do not read `UltraFlavor::VerificationKey` (`ultra_flavor.hpp:359`)
+/// instead: it serialises a fifth header field, `pairing_inputs_public_input_key`,
+/// which `UltraKeccakFlavor` omits, so its encoding is four bytes longer than the
+/// 1760 this parses. The base template is `flavor/flavor.hpp:166`.
 pub fn load_vk_from_bytes(env: &Env, bytes: &Bytes) -> Result<VerificationKey, VkLoadError> {
     const HEADER_WORDS: usize = 4;
     const NUM_POINTS: usize = 27;

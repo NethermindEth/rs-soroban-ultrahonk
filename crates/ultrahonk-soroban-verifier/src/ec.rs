@@ -11,6 +11,8 @@ use soroban_sdk::{
 /// `barretenberg/cpp/src/barretenberg/dsl/acir_proofs/honk_contract.hpp`
 /// where it appears as the fixed G2 point in the `pairing` function
 /// (the first 128 bytes of the precompile input after the RHS G1 point).
+/// Re-checked byte-for-byte against v0.87.0 `honk_contract.hpp:663-666`
+/// on 2026-09-04; unchanged between the two tags.
 ///
 /// The four 32-byte limbs are the canonical Ethereum BN254 precompile
 /// encoding: x₁, x₀, y₁, y₀ (each big-endian).
@@ -36,6 +38,8 @@ const RHS_G2_BYTES: [u8; 128] = [
 /// `barretenberg/cpp/src/barretenberg/dsl/acir_proofs/honk_contract.hpp`
 /// where it appears as the VK-derived G2 point in the `pairing` function
 /// (the last 128 bytes of the precompile input).
+/// Re-checked byte-for-byte against v0.87.0 `honk_contract.hpp:670-673`
+/// on 2026-09-04; unchanged between the two tags.
 const LHS_G2_BYTES: [u8; 128] = [
     0x26, 0x0e, 0x01, 0xb2, 0x51, 0xf6, 0xf1, 0xc7, 0xe7, 0xff, 0x4e, 0x58, 0x07, 0x91, 0xde, 0xe8,
     0xea, 0x51, 0xd8, 0x7a, 0x35, 0x8e, 0x03, 0x8b, 0x4e, 0xfe, 0x30, 0xfa, 0xc0, 0x93, 0x83, 0xc1,

@@ -3,9 +3,12 @@
 //! Evaluates all 26 subrelations across 8 relation families at the purported
 //! evaluation point, then batches them with independent alpha challenges.
 //! Every formula was verified line-by-line against Barretenberg v0.82.2 during
-//! the 2026-05-28 internal review; that review has not been re-run against the
-//! declared target v0.87.0. The relation algebra is unchanged between the two.
-//! See VERIFIER_PROVENANCE.md §4.2.
+//! the 2026-05-28 internal review, and re-verified against the declared target
+//! v0.87.0 on 2026-09-04 — all 26 subrelations, their ordering, their alpha
+//! assignment, the single `SUBRELATION_LINEARLY_INDEPENDENT = false` flag, and
+//! the Poseidon2 internal-matrix diagonal, with no divergence. The relation
+//! algebra is unchanged between the two versions. See VERIFIER_PROVENANCE.md
+//! §4.2 and audit/v087-review.md §4.
 //!
 //! BB reference (v0.87.0):
 //!   - `relations/ultra_arithmetic_relation.hpp`

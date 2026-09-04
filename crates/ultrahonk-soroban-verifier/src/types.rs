@@ -209,7 +209,9 @@ impl G1Point {
 /// `public_inputs_size`, `pub_inputs_offset`) followed by 27 G1 commitments
 /// (64 bytes each) in `PrecomputedEntities` order.
 ///
-/// BB: `stdlib_circuit_builders/ultra_flavor.hpp::VerificationKey_`
+/// BB: `ultra_keccak_flavor.hpp:132`
+/// (`UltraKeccakFlavor::VerificationKey::MSGPACK_FIELDS`) — not
+/// `UltraFlavor::VerificationKey`, which serialises an extra header field.
 #[derive(Clone, Debug)]
 pub struct VerificationKey {
     pub circuit_size: u64,
@@ -260,7 +262,8 @@ pub struct VerificationKey {
 /// - 28 Fr elements (Gemini fold evaluations)
 /// - 2 G1 commitments (Shplonk Q + KZG quotient)
 ///
-/// BB: `stdlib_circuit_builders/ultra_flavor.hpp::Proof`
+/// BB: `ultra_flavor.hpp:110` (`PROOF_LENGTH_WITHOUT_PUB_INPUTS`) and `:683-760`
+/// (`Transcript_::{de,}serialize_full_transcript`)
 #[derive(Clone, Debug)]
 pub struct Proof {
     // Pairing point object (16 Fr elements)

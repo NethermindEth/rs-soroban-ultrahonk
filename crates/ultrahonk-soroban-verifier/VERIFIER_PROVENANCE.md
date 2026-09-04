@@ -106,8 +106,9 @@ types.rs         ─────────────────► stdlib_c
                                     relations/relation_parameters.hpp
 
 utils.rs         ─────────────────► honk/proof_system/types/proof.hpp
-                                    stdlib_circuit_builders/ultra_flavor.hpp::Proof
-                                    stdlib_circuit_builders/ultra_flavor.hpp::VerificationKey_
+                                    ultra_flavor.hpp:110 PROOF_LENGTH_WITHOUT_PUB_INPUTS
+                                    ultra_flavor.hpp:683-760 Transcript_ (de)serialisation
+                                    ultra_keccak_flavor.hpp:132 VerificationKey MSGPACK_FIELDS
 
 ec.rs            ─────────────────► Host bn254_g1_msm / pairing_check
                                     (same cryptographic primitives as BB native)
@@ -175,8 +176,8 @@ ec.rs            ─────────────────► Host bn2
 
 | Rust Function                          | BB Equivalent                                      |
 |----------------------------------------|----------------------------------------------------|
-| `load_proof`                           | `stdlib_circuit_builders/ultra_flavor.hpp::Proof` layout            |
-| `load_vk_from_bytes`                   | `stdlib_circuit_builders/ultra_flavor.hpp::VerificationKey_` layout |
+| `load_proof`                           | `ultra_flavor.hpp:110` (`PROOF_LENGTH_WITHOUT_PUB_INPUTS`) + `:683-760` (`Transcript_::{de,}serialize_full_transcript`) — there is no `Proof` type |
+| `load_vk_from_bytes`                   | `ultra_keccak_flavor.hpp:132` (`UltraKeccakFlavor::VerificationKey::MSGPACK_FIELDS`) — **not** `UltraFlavor::VerificationKey` (`ultra_flavor.hpp:450-454`), which serialises a fifth header field |
 | `coord_to_halves_be` / `combine_limbs` | `field_conversion::calc_num_bn254_frs`             |
 
 ---
@@ -193,13 +194,39 @@ ec.rs            ─────────────────► Host bn2
 ### 4.2 Verified-Aligned Behaviours
 
 The following were checked line-by-line during the 2026-05-28 internal review,
-against BB **v0.82.2** — the version the port was written from. This is a record
-of a review that was performed, not a proof of equivalence, and it has **not**
-been re-run against v0.87.0.
+against BB **v0.82.2** — the version the port was written from.
 
-Re-running it against v0.87.0, by the procedure in section 7, is outstanding. The relation algebra and transcript construction are unchanged
-between the two versions, but the serialization surface is not, so the
-deserialization entry below is the one most in need of re-checking:
+**The review was re-run against the declared target, BB v0.87.0, on 2026-09-04.**
+It covered all eight surfaces below by the procedure in section 7, and its record —
+a per-surface verdict table with citations on both sides, the findings, and the
+list of what could not be verified — is `audit/v087-review.md`. That closes
+OpenZeppelin finding L-03. The outcome: **no soundness or completeness divergence**.
+Two behavioral differences were found that change only the stage and type of
+rejection, never the accept/reject outcome:
+
+- A G1 coordinate encoded as `x + p` is rejected at parse time (`fp_in_range`),
+  where bb reduces it and then rejects via the transcript, which absorbs the raw
+  limbs. This is a *different surface* from the limb-width rule §4.3 already
+  recorded, and §4.3 now carries a row for it.
+- Verification-key header fields are structurally validated here
+  (`circuit_size == 1 << log_circuit_size` and friends); bb v0.87.0 deserializes
+  them without re-validation. A narrowing on trusted, public, deployer-supplied data.
+
+The review also corrected two source comments that cited bb symbols which do not
+exist at v0.87.0 — `ultra_flavor.hpp::Proof` and `ultra_flavor.hpp::VerificationKey_`.
+The second was the more misleading: it resolves to `UltraFlavor::VerificationKey`,
+whose `MSGPACK_FIELDS` carries a fifth header field this crate must *not* parse. The
+layout implemented here is `UltraKeccakFlavor`'s. See finding F-3; §2 and §3.6 below
+are corrected to match.
+
+Three further differences are unreachable degenerate-input paths where this
+verifier returns a clean error and bb calls `throw_or_abort`; they are recorded as
+finding F-4 in the review and need no action.
+
+Both records are kept below: the 2026-05-28 entries state what was checked, and the
+v0.87.0 review re-confirmed each of them. The relation algebra and transcript
+construction are unchanged between the two versions; the serialization surface is
+not, and the deserialization entry was therefore the one re-derived most carefully.
 
 - **Transcript:** All 13 challenge rounds, Keccak-256 hashing, 128-bit challenge splitting, G1 point serialization (lo136/hi118), uint64 serialization.
 - **Public-input delta:** Formula, loop bounds, pairing-point-object inclusion, offset handling.
@@ -217,7 +244,8 @@ its accepted proof language explicitly rather than leaving it implicit:
 
 | Surface | Policy | Relative to bb v0.87.0 |
 |---|---|---|
-| G1 limb encodings | **Canonical only** — `lo < 2^136`, `hi < 2^118`, enforced at parse time | Removes a divergence: bb reconstructs by addition and rejects these |
+| G1 limb encodings | **Canonical only** — `lo < 2^136`, `hi < 2^118`, at parse time | Removes a divergence: bb reconstructs by addition and rejects these |
+| G1 coordinates | **Canonical only** — rejected at or above `p`, at parse time | Same outcome, earlier: bb reduces mod `p` but hashed the raw limbs, so rejects at the pairing check. Distinct from the limb widths above — `x + p` can satisfy both bounds. See `audit/v087-review.md` F-1 |
 | Proof scalar words | **Canonical only** — rejected at or above `r` | **Deliberate narrowing**: bb's native decode reduces silently |
 | Public inputs | **Canonical only** — rejected at or above `r` | Stricter than a bare reduction; see note 3 |
 | Padded Gemini evaluations | **Zero required** — rejected at parse time (slots `log_n..28`) | Matches bb: bb binds these via its constant-term accumulator and rejects non-zero |
