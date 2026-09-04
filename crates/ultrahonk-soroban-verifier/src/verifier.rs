@@ -31,6 +31,13 @@ pub enum VkLoadError {
     WrongLength,
     /// Header parsed successfully but contains out-of-range values.
     InvalidParameters,
+    /// A verification-key G1 commitment was malformed: either a coordinate at or
+    /// above the base field modulus, or a point that is not on the BN254 curve.
+    ///
+    /// Note there is no limb-canonicality case here, unlike the proof path: the VK
+    /// stores each point as a plain 64-byte `x || y`, so there are no limbs to
+    /// decode and `PointError::NonCanonicalLimb` is unreachable from this path.
+    InvalidPoint,
 }
 
 /// Error type describing the specific reason verification failed.

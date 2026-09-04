@@ -10,8 +10,8 @@
 
 use crate::field::Fr;
 use crate::types::{
-    G1Point, Proof, VerificationKey, BATCHED_RELATION_PARTIAL_LENGTH, CONST_PROOF_SIZE_LOG_N,
-    NUMBER_OF_ENTITIES, PAIRING_POINTS_SIZE,
+    fr_is_canonical, G1Point, PointError, Proof, VerificationKey, BATCHED_RELATION_PARTIAL_LENGTH,
+    CONST_PROOF_SIZE_LOG_N, NUMBER_OF_ENTITIES, PAIRING_POINTS_SIZE,
 };
 use crate::{VkLoadError, PROOF_BYTES};
 use core::array;
@@ -55,29 +55,63 @@ pub(crate) fn combine_limbs(lo: &[u8; 32], hi: &[u8; 32]) -> [u8; 32] {
     out
 }
 
+/// True when a G1 coordinate limb pair is canonically encoded, i.e. `lo < 2^136`
+/// and `hi < 2^118`, which is what the honest Barretenberg serializer emits.
+///
+/// `combine_limbs` keeps only the low 17 bytes of `lo` and the low 15 bytes of
+/// `hi`. Barretenberg does not truncate: it reconstructs by addition,
+/// `lo + (hi << 136)`, so on non-canonical limbs the two implementations
+/// compute different points and Barretenberg rejects the proof. Enforcing the
+/// canonical widths here removes the divergence and the re-encoding vector at
+/// the same time.
 #[inline]
-pub(crate) fn fr_word32(env: &Env, blob: &[u8], word_idx: usize) -> Fr {
+pub(crate) fn limbs_are_canonical(lo: &[u8; 32], hi: &[u8; 32]) -> bool {
+    // lo < 2^136: the top 15 bytes must be zero.
+    if lo[..15].iter().any(|b| *b != 0) {
+        return false;
+    }
+    // hi < 2^118: the top 17 bytes must be zero, and the next byte must be
+    // below 0x40 so that the retained window is 118 bits rather than 120.
+    if hi[..17].iter().any(|b| *b != 0) {
+        return false;
+    }
+    hi[17] < 0x40
+}
+
+/// Canonical-encoding variant of [`fr_word32`].
+///
+/// `Fr::from_array` reduces modulo the scalar order rather than rejecting, so
+/// `v` and `v + k*r` decode identically and the transcript absorbs the reduced
+/// value either way. Rejecting here makes the scalar encoding of a proof unique.
+#[inline]
+pub(crate) fn try_fr_word32(env: &Env, blob: &[u8], word_idx: usize) -> Result<Fr, &'static str> {
     let o = word_idx * 32;
-    Fr::from_array(env, blob[o..o + 32].try_into().expect("fr32"))
+    let w: &[u8; 32] = blob[o..o + 32].try_into().expect("fr32");
+    if !fr_is_canonical(w) {
+        return Err("non-canonical scalar encoding");
+    }
+    Ok(Fr::from_array(env, w))
+}
+
+/// Parse one 128-byte G1 chunk with canonical-limb and curve validation.
+#[inline]
+pub(crate) fn try_g1_from_proof_chunk128(env: &Env, b: &[u8; 128]) -> Result<G1Point, PointError> {
+    let x_lo: &[u8; 32] = b[0..32].try_into().expect("x_lo");
+    let x_hi: &[u8; 32] = b[32..64].try_into().expect("x_hi");
+    let y_lo: &[u8; 32] = b[64..96].try_into().expect("y_lo");
+    let y_hi: &[u8; 32] = b[96..128].try_into().expect("y_hi");
+    if !limbs_are_canonical(x_lo, x_hi) || !limbs_are_canonical(y_lo, y_hi) {
+        return Err(PointError::NonCanonicalLimb);
+    }
+    let x = combine_limbs(x_lo, x_hi);
+    let y = combine_limbs(y_lo, y_hi);
+    G1Point::try_from_xy(env, &x, &y)
 }
 
 #[inline]
-pub(crate) fn g1_from_proof_chunk128(env: &Env, b: &[u8; 128]) -> G1Point {
-    let x = combine_limbs(
-        b[0..32].try_into().expect("x_lo"),
-        b[32..64].try_into().expect("x_hi"),
-    );
-    let y = combine_limbs(
-        b[64..96].try_into().expect("y_lo"),
-        b[96..128].try_into().expect("y_hi"),
-    );
-    G1Point::from_xy(env, &x, &y)
-}
-
-#[inline]
-pub(crate) fn g1_from_proof_blob_at(env: &Env, blob: &[u8], point_idx: usize) -> G1Point {
-    let o = point_idx * 128;
-    g1_from_proof_chunk128(env, blob[o..o + 128].try_into().expect("g1_128"))
+pub(crate) fn try_g1_at(env: &Env, blob: &[u8], idx: usize) -> Result<G1Point, PointError> {
+    let o = idx * 128;
+    try_g1_from_proof_chunk128(env, blob[o..o + 128].try_into().expect("g1_128"))
 }
 
 /// Deserialize a `Proof` from its canonical byte representation.
@@ -86,10 +120,18 @@ pub(crate) fn g1_from_proof_blob_at(env: &Env, blob: &[u8], point_idx: usize) ->
 /// All field elements are big-endian 32-byte scalars; G1 points use the
 /// `(x_lo, x_hi, y_lo, y_hi)` limb layout (128 bytes each).
 ///
-/// BB: `flavor/ultra_flavor.hpp::Proof` (implicit in `BaseTranscript` deserialization)
+/// BB: `stdlib_circuit_builders/ultra_flavor.hpp::Proof` (implicit in `BaseTranscript` deserialization)
 ///
 /// Note (bb v0.87.0): G1 coordinates are encoded as two limbs per coordinate
 /// using the (lo136, hi<=118) split and stored in the order (x_lo, x_hi, y_lo, y_hi).
+fn point_err(e: PointError) -> &'static str {
+    match e {
+        PointError::CoordinateOutOfRange => "g1 coordinate out of range",
+        PointError::NotOnCurve => "g1 point not on curve",
+        PointError::NonCanonicalLimb => "non-canonical g1 limb encoding",
+    }
+}
+
 pub fn load_proof(env: &Env, proof_bytes: &Bytes) -> Result<Proof, &'static str> {
     if proof_bytes.len() as usize != PROOF_BYTES {
         return Err("proof bytes length mismatch");
@@ -98,42 +140,60 @@ pub fn load_proof(env: &Env, proof_bytes: &Bytes) -> Result<Proof, &'static str>
 
     // 0) pairing point object — one host read, then in-memory Fr decode
     let ppo = read_bytes::<PAIRING_OBJ_BYTES>(proof_bytes, &mut boundary);
-    let pairing_point_object = array::from_fn(|i| fr_word32(env, &ppo, i));
+    let mut pairing_point_object = Fr::zero_array::<PAIRING_POINTS_SIZE>(env);
+    for (i, slot) in pairing_point_object.iter_mut().enumerate() {
+        *slot = try_fr_word32(env, &ppo, i)?;
+    }
 
     // 1–4) eight consecutive G1 commitments
     let g1_head = read_bytes::<PROOF_HEAD_G1_BYTES>(proof_bytes, &mut boundary);
-    let w1 = g1_from_proof_blob_at(env, &g1_head, 0);
-    let w2 = g1_from_proof_blob_at(env, &g1_head, 1);
-    let w3 = g1_from_proof_blob_at(env, &g1_head, 2);
-    let lookup_read_counts = g1_from_proof_blob_at(env, &g1_head, 3);
-    let lookup_read_tags = g1_from_proof_blob_at(env, &g1_head, 4);
-    let w4 = g1_from_proof_blob_at(env, &g1_head, 5);
-    let lookup_inverses = g1_from_proof_blob_at(env, &g1_head, 6);
-    let z_perm = g1_from_proof_blob_at(env, &g1_head, 7);
+    let w1 = try_g1_at(env, &g1_head, 0).map_err(point_err)?;
+    let w2 = try_g1_at(env, &g1_head, 1).map_err(point_err)?;
+    let w3 = try_g1_at(env, &g1_head, 2).map_err(point_err)?;
+    let lookup_read_counts = try_g1_at(env, &g1_head, 3).map_err(point_err)?;
+    let lookup_read_tags = try_g1_at(env, &g1_head, 4).map_err(point_err)?;
+    let w4 = try_g1_at(env, &g1_head, 5).map_err(point_err)?;
+    let lookup_inverses = try_g1_at(env, &g1_head, 6).map_err(point_err)?;
+    let z_perm = try_g1_at(env, &g1_head, 7).map_err(point_err)?;
 
     // 5) sumcheck_univariates (row-major)
     let su = read_bytes::<SUMCHECK_UNIV_BYTES>(proof_bytes, &mut boundary);
-    let sumcheck_univariates: [[Fr; BATCHED_RELATION_PARTIAL_LENGTH]; CONST_PROOF_SIZE_LOG_N] =
-        array::from_fn(|r| {
-            array::from_fn(|c| fr_word32(env, &su, r * BATCHED_RELATION_PARTIAL_LENGTH + c))
-        });
+    let mut sumcheck_univariates: [[Fr; BATCHED_RELATION_PARTIAL_LENGTH]; CONST_PROOF_SIZE_LOG_N] =
+        array::from_fn(|_| Fr::zero_array(env));
+    for (r, row) in sumcheck_univariates.iter_mut().enumerate() {
+        for (c, cell) in row.iter_mut().enumerate() {
+            *cell = try_fr_word32(env, &su, r * BATCHED_RELATION_PARTIAL_LENGTH + c)?;
+        }
+    }
 
     // 6) sumcheck_evaluations
     let se = read_bytes::<SUMCHECK_EVAL_BYTES>(proof_bytes, &mut boundary);
-    let sumcheck_evaluations = array::from_fn(|i| fr_word32(env, &se, i));
+    let mut sumcheck_evaluations = Fr::zero_array::<NUMBER_OF_ENTITIES>(env);
+    for (i, slot) in sumcheck_evaluations.iter_mut().enumerate() {
+        *slot = try_fr_word32(env, &se, i)?;
+    }
 
     // 7) gemini_fold_comms
     let gf = read_bytes::<GEMINI_FOLD_COMMS_BYTES>(proof_bytes, &mut boundary);
-    let gemini_fold_comms = array::from_fn(|i| g1_from_proof_blob_at(env, &gf, i));
+    let mut gemini_fold_comms: [G1Point; CONST_PROOF_SIZE_LOG_N - 1] =
+        array::from_fn(|_| G1Point::infinity(env));
+    for (i, slot) in gemini_fold_comms.iter_mut().enumerate() {
+        *slot = try_g1_at(env, &gf, i).map_err(point_err)?;
+    }
 
     // 8) gemini_a_evaluations
     let ga = read_bytes::<GEMINI_A_EVAL_BYTES>(proof_bytes, &mut boundary);
-    let gemini_a_evaluations = array::from_fn(|i| fr_word32(env, &ga, i));
+    let mut gemini_a_evaluations = Fr::zero_array::<CONST_PROOF_SIZE_LOG_N>(env);
+    for (i, slot) in gemini_a_evaluations.iter_mut().enumerate() {
+        *slot = try_fr_word32(env, &ga, i)?;
+    }
 
     // 9) shplonk_q, kzg_quotient
     let tail_g1 = read_bytes::<FINAL_TWO_G1_BYTES>(proof_bytes, &mut boundary);
-    let shplonk_q = g1_from_proof_chunk128(env, tail_g1[0..128].try_into().expect("shplonk"));
-    let kzg_quotient = g1_from_proof_chunk128(env, tail_g1[128..256].try_into().expect("kzg"));
+    let shplonk_q = try_g1_from_proof_chunk128(env, tail_g1[0..128].try_into().expect("shplonk"))
+        .map_err(point_err)?;
+    let kzg_quotient = try_g1_from_proof_chunk128(env, tail_g1[128..256].try_into().expect("kzg"))
+        .map_err(point_err)?;
 
     debug_assert_eq!(boundary as usize, PROOF_BYTES);
 
@@ -161,7 +221,7 @@ pub fn load_proof(env: &Env, proof_bytes: &Bytes) -> Result<Proof, &'static str>
 /// Layout: 4 big-endian `u64` header fields + 27 G1 commitments (64 bytes each).
 /// The point order matches `PrecomputedEntities` in BB.
 ///
-/// BB: `flavor/ultra_flavor.hpp::VerificationKey_`
+/// BB: `stdlib_circuit_builders/ultra_flavor.hpp::VerificationKey_`
 pub fn load_vk_from_bytes(env: &Env, bytes: &Bytes) -> Result<VerificationKey, VkLoadError> {
     const HEADER_WORDS: usize = 4;
     const NUM_POINTS: usize = 27;
@@ -200,13 +260,14 @@ pub fn load_vk_from_bytes(env: &Env, bytes: &Bytes) -> Result<VerificationKey, V
 
     // One contiguous read for all G1 points (27 × 64 bytes), then parse in layout order.
     let points_bytes = read_bytes::<POINT_BLOB_LEN>(bytes, &mut idx);
-    let pts: [G1Point; NUM_POINTS] = array::from_fn(|i| {
+    let mut pts: [G1Point; NUM_POINTS] = array::from_fn(|_| G1Point::infinity(env));
+    for (i, slot) in pts.iter_mut().enumerate() {
         let off = i * 64;
         let chunk: &[u8; 64] = (&points_bytes[off..off + 64])
             .try_into()
             .expect("vk point chunk");
-        G1Point::from_bytes(env, chunk)
-    });
+        *slot = G1Point::try_from_bytes(env, chunk).map_err(|_| VkLoadError::InvalidPoint)?;
+    }
     debug_assert_eq!(idx as usize, EXPECTED_LEN);
 
     Ok(VerificationKey {

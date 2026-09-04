@@ -33,6 +33,9 @@ pub enum Error {
     VkNotSet = 5,
     /// Constructor has already been called; VK is immutable.
     AlreadyInitialized = 6,
+    /// A VK G1 commitment was malformed: coordinate out of range, non-canonical
+    /// encoding, or a point that is not on the curve.
+    VkInvalidPoint = 7,
 }
 
 #[contractimpl]
@@ -51,6 +54,7 @@ impl UltraHonkVerifierContract {
         let _ = UltraHonkVerifier::new(&env, &vk_bytes).map_err(|e| match e {
             VkLoadError::WrongLength => Error::VkInvalidLength,
             VkLoadError::InvalidParameters => Error::VkInvalidParameters,
+            VkLoadError::InvalidPoint => Error::VkInvalidPoint,
         })?;
         env.storage().instance().set(&Self::key_vk(), &vk_bytes);
         Ok(())
@@ -79,6 +83,7 @@ impl UltraHonkVerifierContract {
         let verifier = UltraHonkVerifier::new(&env, &vk_bytes).map_err(|e| match e {
             VkLoadError::WrongLength => Error::VkInvalidLength,
             VkLoadError::InvalidParameters => Error::VkInvalidParameters,
+            VkLoadError::InvalidPoint => Error::VkInvalidPoint,
         })?;
 
         // Verify
