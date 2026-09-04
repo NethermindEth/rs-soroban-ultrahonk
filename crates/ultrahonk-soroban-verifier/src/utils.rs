@@ -216,6 +216,71 @@ pub fn load_proof(env: &Env, proof_bytes: &Bytes) -> Result<Proof, &'static str>
     })
 }
 
+/// Reject non-canonical public-input encodings.
+///
+/// Unlike the proof scalars (L-02), public inputs are **not** a malleability
+/// surface: `generate_eta_challenge` absorbs the raw public-input bytes into the
+/// transcript, so `v` and `v + k*r` already produce different challenges and a
+/// proof for one does not verify against the other. Verification fails closed
+/// either way.
+///
+/// What this removes is an internal asymmetry. The transcript binds the raw bytes
+/// while `compute_public_input_delta` decodes through `Fr::from_array`, which
+/// reduces. For a non-canonical input the two paths therefore disagree about what
+/// the value is. That is harmless today only because the transcript mismatch
+/// rejects first. Enforcing canonicality here makes "both paths see the same
+/// value" an enforced invariant rather than an accident of ordering, so that a
+/// later change to how the transcript absorbs public inputs cannot silently
+/// introduce the malleability that L-02 exists to remove.
+///
+/// The honest pipeline is unaffected: bb serialises public inputs as canonical
+/// field elements.
+pub fn validate_public_inputs_canonical(public_inputs: &Bytes) -> Result<(), &'static str> {
+    let mut idx = 0u32;
+    while idx < public_inputs.len() {
+        let mut w = [0u8; 32];
+        public_inputs.slice(idx..idx + 32).copy_into_slice(&mut w);
+        if !fr_is_canonical(&w) {
+            return Err("non-canonical public input encoding");
+        }
+        idx += 32;
+    }
+    Ok(())
+}
+
+/// Reject non-canonical padding in the Gemini evaluation slots (audit N-05).
+///
+/// The proof carries `CONST_PROOF_SIZE_LOG_N` Gemini evaluations regardless of the
+/// circuit size, but only indices `0..log_n` are used: `verify_shplemini` reads
+/// `gemini_a_evaluations[j - 1]` for `j` in `1..=log_n` and `[j]` for `j` in
+/// `1..log_n`. The honest prover emits zero in the remaining slots.
+///
+/// This is the one padded surface where this verifier diverged from Barretenberg.
+/// bb masks the padded sumcheck rounds and the unused fold commitments exactly as
+/// we do, but its Shplemini reduction still binds the padded Gemini evaluations
+/// through the constant-term accumulator, so bb rejects a proof carrying non-zero
+/// values there while we previously ignored them. Rejecting at parse time reaches
+/// the same accept/reject outcome as bb without reimplementing its constant-term
+/// accumulation over the fixed 28-slot layout.
+///
+/// Deliberately scoped to the evaluations. Extending it to the unused fold
+/// commitments would make this verifier *stricter* than bb, which masks them, and
+/// would depend on the generator-valued padding convention, which is confirmed
+/// only at `log_circuit_size` 12 and 13. See VERIFIER_PROVENANCE.md §4.3.
+pub fn validate_gemini_padding(proof: &Proof, log_n: usize) -> Result<(), &'static str> {
+    if log_n == 0 || log_n > CONST_PROOF_SIZE_LOG_N {
+        return Err("log_circuit_size out of range");
+    }
+    let env = proof.gemini_a_evaluations[0].0.env();
+    let zero = Fr::zero(env);
+    for slot in proof.gemini_a_evaluations.iter().skip(log_n) {
+        if *slot != zero {
+            return Err("non-zero padding in unused Gemini evaluation slot");
+        }
+    }
+    Ok(())
+}
+
 /// Deserialize a `VerificationKey` from its canonical byte representation.
 ///
 /// Layout: 4 big-endian `u64` header fields + 27 G1 commitments (64 bytes each).

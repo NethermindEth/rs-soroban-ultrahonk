@@ -179,6 +179,67 @@ The following were verified byte-for-byte or line-by-line against BB v0.82.2:
 
 ---
 
+## 4.3 Accepted Proof Language (compatibility contract)
+
+Following the OpenZeppelin audit (findings L-01, L-02, N-05), the crate declares
+its accepted proof language explicitly rather than leaving it implicit:
+
+| Surface | Policy | Relative to bb v0.87.0 |
+|---|---|---|
+| G1 limb encodings | **Canonical only** — `lo < 2^136`, `hi < 2^118`, enforced at parse time | Removes a divergence: bb reconstructs by addition and rejects these |
+| Proof scalar words | **Canonical only** — rejected at or above `r` | **Deliberate narrowing**: bb's native decode reduces silently |
+| Public inputs | **Canonical only** — rejected at or above `r` | Stricter than a bare reduction; see note 3 |
+| Padded Gemini evaluations | **Zero required** — rejected at parse time (slots `log_n..28`) | Matches bb: bb binds these via its constant-term accumulator and rejects non-zero |
+| Padded sumcheck rounds, unused fold commitments | Unconstrained | Matches bb, which masks both |
+
+Two consequences a reader must not have to infer:
+
+1. **The scalar rule is a deliberate divergence from the reference version.** bb
+   v0.87.0 accepts `v + k·r`; this verifier does not. Honest proofs are unaffected —
+   bb's serializer emits canonical scalars by construction — but a hand-built proof
+   that bb accepts may be rejected here, and that is intended.
+2. **Padding is constrained only where bb constrains it.** Of the three padded
+   surfaces, bb masks the sumcheck rounds and the unused fold commitments exactly as
+   this verifier does; the one divergence was the Gemini evaluations, which bb binds
+   through its Shplonk constant-term accumulator
+   (`shplemini.hpp::batch_gemini_claims_received_from_prover`) while this verifier
+   ignored beyond `log_n`. `validate_gemini_padding` now rejects non-zero values in
+   those slots at parse time, reaching bb's accept/reject outcome without
+   reimplementing its constant-term accumulation over the fixed 28-slot layout.
+
+   The unused fold commitments are deliberately left unconstrained. Rejecting
+   non-generator values there would make this verifier *stricter* than bb, and would
+   rest on a padding convention confirmed only at `log_circuit_size` 12 and 13.
+
+3. **Public inputs are canonicality-checked, but not because they were malleable.**
+   Unlike the proof scalars, public inputs are *not* a malleability surface:
+   `generate_eta_challenge` absorbs the raw public-input bytes into the transcript, so
+   `v` and `v + k·r` already produce different challenges and a proof for one does not
+   verify against the other. Verification failed closed before this check existed —
+   with `SumcheckFailed`, as the negative test demonstrates when the check is removed.
+
+   What the check removes is an internal asymmetry: the transcript bound the raw bytes
+   while `compute_public_input_delta` decoded through `Fr::from_array`, which reduces,
+   so for a non-canonical input the two paths disagreed about the value. That was
+   harmless only because the transcript mismatch rejected first. Enforcing canonicality
+   makes "both paths see the same value" an invariant rather than an accident of
+   ordering, so a future change to how the transcript absorbs public inputs cannot
+   silently reintroduce L-02's malleability on this surface.
+
+   Integrator note: a caller that passes an unreduced digest as a public input, relying
+   on the verifier's reduction to match what the prover committed, will now be rejected.
+   Reduce before calling.
+
+The contract is therefore: **canonical encodings throughout the verified tuple —
+proof and public inputs — zero-padded Gemini evaluations, and bb-compatible padding
+elsewhere.**
+
+Note that proof bytes remain non-unique as a statement identifier even under a fully
+canonical policy: an active prover can still vary padding. Do not key deduplication,
+replay protection or nullifiers on raw proof bytes.
+
+---
+
 ## 5. Out-of-Scope Items (Intentionally Excluded)
 
 | Feature              | BB Component                      | Reason                                                     |

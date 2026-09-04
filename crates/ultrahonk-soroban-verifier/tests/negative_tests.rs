@@ -741,3 +741,93 @@ fn vk_rejects_off_curve_point() {
         vk_case(|b| b[VK_FIRST_POINT + 63] ^= 0x01).expect("off-curve VK point must be rejected");
     assert_eq!(err, VkLoadError::InvalidPoint);
 }
+
+// ---------------------------------------------------------------------------
+// N-05 (narrow): padded Gemini evaluation slots must be zero.
+//
+// This is the one padded surface where the verifier diverged from Barretenberg:
+// bb binds these through its Shplonk constant-term accumulator and rejects
+// non-zero values, while this verifier previously ignored evaluations beyond
+// log_n. Rejecting at parse time reaches bb's accept/reject outcome.
+// ---------------------------------------------------------------------------
+
+/// Byte offset of `gemini_a_evaluations[i]` within the proof: 16 pairing-point
+/// words, 8 head G1 points, 28x8 sumcheck univariates, 40 sumcheck evaluations,
+/// then 27 fold commitments.
+fn gemini_eval_offset(i: usize) -> usize {
+    16 * 32 + 8 * 128 + 28 * 8 * 32 + 40 * 32 + 27 * 128 + i * 32
+}
+
+/// A non-zero value in an unused Gemini evaluation slot must be rejected.
+/// simple_circuit has log_n = 12, so slots 12..28 are padding.
+#[test]
+fn rejects_non_zero_padded_gemini_evaluation() {
+    assert!(
+        remediation_case(|b| {
+            // Slot 27 is the last, comfortably inside the padded range for log_n = 12.
+            let off = gemini_eval_offset(27);
+            b[off + 31] = 0x01;
+        }),
+        "non-zero padding in an unused Gemini evaluation slot must be rejected"
+    );
+}
+
+/// The check must not reject honest proofs: the *used* slots carry non-zero
+/// values, so a rule that rejected any non-zero evaluation would break every
+/// valid proof. This pins that the boundary is at log_n, not at zero.
+#[test]
+fn accepts_non_zero_used_gemini_evaluation() {
+    let env = test_env();
+    let f = Fixture::load("simple_circuit");
+    let proof = Bytes::from_slice(&env, &f.proof);
+    let vk = Bytes::from_slice(&env, &f.vk);
+    let pi = Bytes::from_slice(&env, &f.public_inputs);
+    let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
+    assert!(
+        v.verify(&proof, &pi).is_ok(),
+        "unmodified proof must still verify after the padding check"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Public-input canonicality.
+//
+// Not a malleability fix: the transcript absorbs the raw public-input bytes, so
+// `v` and `v + r` already yield different challenges and fail closed. This pins
+// the invariant that the transcript path and the public-input-delta path see the
+// same value, so a later change to transcript absorption cannot reintroduce the
+// L-02 malleability on this surface.
+// ---------------------------------------------------------------------------
+
+/// BN254 scalar field order, big-endian.
+const R_BE: [u8; 32] = [
+    0x30, 0x64, 0x4e, 0x72, 0xe1, 0x31, 0xa0, 0x29, 0xb8, 0x50, 0x45, 0xb6, 0x81, 0x81, 0x58, 0x5d,
+    0x28, 0x33, 0xe8, 0x48, 0x79, 0xb9, 0x70, 0x91, 0x43, 0xe1, 0xf5, 0x93, 0xf0, 0x00, 0x00, 0x01,
+];
+
+#[test]
+fn rejects_non_canonical_public_input() {
+    let env = test_env();
+    let f = Fixture::load("simple_circuit");
+    let mut pi = f.public_inputs.clone();
+    // pi[0] += r, which reduces to the same field element.
+    let mut carry = 0u16;
+    for i in (0..32).rev() {
+        let s = pi[i] as u16 + R_BE[i] as u16 + carry;
+        pi[i] = (s & 0xff) as u8;
+        carry = s >> 8;
+    }
+    assert_ne!(pi, f.public_inputs, "mutation must change the bytes");
+
+    let v = UltraHonkVerifier::new(&env, &Bytes::from_slice(&env, &f.vk)).expect("VK parses");
+    let got = v.verify(
+        &Bytes::from_slice(&env, &f.proof),
+        &Bytes::from_slice(&env, &pi),
+    );
+    // InvalidInput specifically: rejected up front, not merely failing later
+    // because the raw bytes perturbed the transcript.
+    assert!(
+        matches!(got, Err(VerifyError::InvalidInput)),
+        "non-canonical public input must be rejected as InvalidInput, got {got:?}"
+    );
+}

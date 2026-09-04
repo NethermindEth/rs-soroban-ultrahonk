@@ -15,7 +15,9 @@ use crate::{
     sumcheck::verify_sumcheck,
     transcript::generate_transcript,
     types::PAIRING_POINTS_SIZE,
-    utils::{load_proof, load_vk_from_bytes},
+    utils::{
+        load_proof, load_vk_from_bytes, validate_gemini_padding, validate_public_inputs_canonical,
+    },
 };
 use soroban_sdk::{Bytes, Env};
 
@@ -99,10 +101,18 @@ impl UltraHonkVerifier {
         // 1) parse proof
         let proof = load_proof(env, proof_bytes).map_err(|_| VerifyError::InvalidInput)?;
 
+        // 2a) reject non-canonical padding in the unused Gemini evaluation slots.
+        // Done here rather than in `load_proof` because it needs log_circuit_size,
+        // which comes from the VK. Runs before transcript generation.
+        validate_gemini_padding(&proof, self.vk.log_circuit_size as usize)
+            .map_err(|_| VerifyError::InvalidInput)?;
+
         // 2) sanity on public inputs (length and VK metadata if present)
         if !public_inputs_bytes.len().is_multiple_of(32) {
             return Err(VerifyError::InvalidInput);
         }
+        validate_public_inputs_canonical(public_inputs_bytes)
+            .map_err(|_| VerifyError::InvalidInput)?;
         let provided = (public_inputs_bytes.len() / 32) as u64;
         let expected = self
             .vk
