@@ -13,7 +13,9 @@ fn main(preimage: Field, hash: pub Field) {
 }
 ```
 
-- **Private input**: `preimage` — the secret value (e.g., a password, seed, or identity secret)
+- **Private input**: `preimage` — not a public input to the circuit. Note that
+  the supported flavor is non-ZK, so this is **not** a confidentiality guarantee:
+  do not use a value here that must remain secret.
 - **Public input**: `hash` — the Poseidon2 hash of the preimage, stored on-chain
 
 ## Contract API
@@ -24,7 +26,14 @@ fn main(preimage: Field, hash: pub Field) {
 fn __constructor(env: Env, vk_bytes: Bytes)
 ```
 
-Stores the UltraHonk verification key in contract instance storage. This VK is tied to the specific Noir circuit and must be generated with the same `bb` version used to produce proofs.
+Stores the UltraHonk verification key in contract instance storage. This VK is tied to the specific Noir circuit and must be generated with the same `bb` version used to produce proofs. The key is parsed and validated here, and is immutable once set.
+
+**Errors:**
+- `AlreadyInitialized` — the constructor has already run; the VK is immutable
+- `VkInvalidLength` — VK byte slice does not match the expected exact length
+- `VkInvalidParameters` — VK header contains out-of-range structural parameters
+- `VkInvalidPoint` — a VK G1 commitment is malformed: a coordinate at or above the
+  base field modulus, or a point that is not on the BN254 curve
 
 ### Methods
 
@@ -32,12 +41,20 @@ Stores the UltraHonk verification key in contract instance storage. This VK is t
 fn prove_identity(env: Env, public_inputs: Bytes, proof_bytes: Bytes) -> Result<(), Error>
 ```
 
-Verifies a proof that the caller knows the preimage for the given public hash.
+Verifies that **someone** knows a preimage for the given public hash.
+
+> **This does not authenticate the caller.** The function reads no caller
+> address, calls no `require_auth`, consumes no nonce and writes no state, so a
+> valid proof is freely transferable: any observer can copy the arguments of a
+> successful call and repeat it. Do not treat a successful `prove_identity` call
+> as authorization. Binding a proof to its submitter requires a circuit public
+> input carrying an authenticated caller identifier (and, for freshness, a
+> contract-issued nonce consumed on success); neither is implemented here.
 
 **Errors:**
 - `VkNotSet` — contract was not initialized with a VK
-- `VkInvalidLength` — VK byte slice does not match the expected exact length
-- `VkInvalidParameters` — VK header contains out-of-range structural parameters
+- `VkInvalidLength`, `VkInvalidParameters`, `VkInvalidPoint` — the stored VK failed
+  to parse; see the constructor above
 - `ProofParseError` — proof length does not match `PROOF_BYTES` (14,592)
 - `VerificationFailed` — proof is invalid for the given public inputs
 

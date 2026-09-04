@@ -65,7 +65,7 @@ just deploy
 *(The generated `CONTRACT_ID` is saved locally to `.contract_id`)*
 
 ### 3. Verify a Proof
-To simulate the verifier on-chain using the ZK proofs generated in the previous step:
+To simulate the verifier on-chain using the proofs generated in the previous step (these are **non-ZK** UltraHonk proofs — see the verifier crate README):
 ```bash
 just verify
 ```
@@ -100,18 +100,6 @@ just e2e
 | `just clean`                | Stop container and remove `.contract_id`                        |
 
 The underlying shell scripts in `scripts/` are still available if you prefer to use them directly.
-
-## Circuits
-
-All Noir circuits live under `/circuits/`. Each circuit keeps its source files and generated artifacts together, with build outputs under `circuits/<name>/target/`.
-
-See [`circuits/README.md`](circuits/README.md) for the circuit layout, rebuild commands, and how to add a new circuit.
-
-## Circuits
-
-All Noir circuits live under `/circuits/`. Each circuit keeps its source files and generated artifacts together, with build outputs under `circuits/<name>/target/`.
-
-See [`circuits/README.md`](circuits/README.md) for the circuit layout, rebuild commands, and how to add a new circuit.
 
 ## Quickstart (testnet)
 
@@ -187,7 +175,11 @@ cargo test --workspace --all-features --release
 
 ## Audit status
 
-This project has not been audited.
+This project was audited by OpenZeppelin (UltraHonk Verifier Audit, 31 August 2026)
+at commit `661db07`: 5 Low severity findings and 6 notes, with no Critical, High or
+Medium issues, and no soundness divergence identified in the core verification
+equations. Every finding is accepted, and the remediation follows in the commits
+after that revision.
 
 ## License
 
