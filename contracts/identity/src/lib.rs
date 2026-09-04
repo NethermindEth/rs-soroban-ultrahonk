@@ -77,7 +77,7 @@ impl IdentityContract {
         })?;
 
         verifier
-            .verify(&env, &proof_bytes, &public_inputs)
+            .verify(&proof_bytes, &public_inputs)
             .map_err(|_| Error::VerificationFailed)?;
 
         Ok(())

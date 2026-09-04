@@ -21,7 +21,7 @@ fn run(dir: &str) -> Result<(), String> {
     let public_inputs = fs::read(path.join("public_inputs")).map_err(|e| e.to_string())?;
     let public_inputs = Bytes::from_slice(&env, &public_inputs);
     verifier
-        .verify(&env, &proof, &public_inputs)
+        .verify(&proof, &public_inputs)
         .map_err(|e| format!("{e:?}"))?;
     Ok(())
 }

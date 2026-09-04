@@ -47,7 +47,13 @@ pub struct UltraHonkVerifier {
 }
 
 impl UltraHonkVerifier {
-    pub fn new_with_vk(env: &Env, vk: crate::types::VerificationKey) -> Self {
+    /// Build a verifier from an already-parsed key.
+    ///
+    /// Crate-internal, per the finding's first option. Documenting the precondition
+    /// would not have been a constraint here, because `VerificationKey`'s fields are
+    /// public; making the constructor internal means a key can only be obtained from
+    /// `load_vk_from_bytes`. Use [`Self::new`] instead.
+    pub(crate) fn new_with_vk(env: &Env, vk: crate::types::VerificationKey) -> Self {
         Self {
             env: env.clone(),
             vk,
@@ -74,12 +80,15 @@ impl UltraHonkVerifier {
     /// 6. Run Shplemini batch-opening (Gemini + Shplonk + KZG pairing check).
     ///
     /// BB: `ultra_verifier.cpp::UltraVerifier_::verify_proof`
+    /// Note: this takes no `Env` parameter. The verifier's stored handle is used
+    /// throughout, which makes a cross-`Env` mismatch unrepresentable rather than
+    /// merely unlikely.
     pub fn verify(
         &self,
-        env: &Env,
         proof_bytes: &Bytes,
         public_inputs_bytes: &Bytes,
     ) -> Result<(), VerifyError> {
+        let env = &self.env;
         // 1) parse proof
         let proof = load_proof(env, proof_bytes).map_err(|_| VerifyError::InvalidInput)?;
 
@@ -101,7 +110,7 @@ impl UltraHonkVerifier {
         let pis_total = provided + PAIRING_POINTS_SIZE as u64;
         let pub_inputs_offset = self.vk.pub_inputs_offset;
         let mut t = generate_transcript(
-            &self.env,
+            env,
             &proof,
             public_inputs_bytes,
             self.vk.circuit_size,
@@ -126,8 +135,7 @@ impl UltraHonkVerifier {
         verify_sumcheck(env, &proof, &t, &self.vk).map_err(|_| VerifyError::SumcheckFailed)?;
 
         // 6) Shplonk
-        verify_shplemini(&self.env, &proof, &self.vk, &t)
-            .map_err(|_| VerifyError::ShplonkFailed)?;
+        verify_shplemini(env, &proof, &self.vk, &t).map_err(|_| VerifyError::ShplonkFailed)?;
 
         Ok(())
     }
