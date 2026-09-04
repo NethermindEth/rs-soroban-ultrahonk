@@ -140,6 +140,23 @@ fn accumulate_log_derivative_lookup_relation(
         + derived_entry_3 * &rp.eta_two
         + &p[Wire::Qo] * &rp.eta_three;
 
+    // `lookup_read_tags` is intended to be boolean but is NOT independently
+    // constrained here, matching Barretenberg v0.87.0, which omitted the check.
+    // It is also not the same as `q_lookup`: a legitimate row may have
+    // `q_lookup = 0` and `lookup_read_tags = 1`.
+    //
+    // Not a soundness break for this relation: where `q_lookup = 1` the tag
+    // cancels (`t + 1 - t = 1`), so an actual lookup is unaffected; where
+    // `q_lookup = 0` a non-boolean tag only rescales that row's inverse, which is
+    // absorbed by rescaling `lookup_read_counts`, leaving `read_term` and
+    // `write_term` untouched. Since `write_term` is built from fixed
+    // verification-key table polynomials, this cannot create a denominator for a
+    // value outside the table.
+    //
+    // Barretenberg added the booleanity subrelation in PR #15007 (merged
+    // 2025-06-18). Adopting it changes the batched relation set and therefore
+    // requires matching prover support: move only when prover and verifier are
+    // upgraded together.
     let inv = &p[Wire::LookupInverses];
     let lookup_read_tags = &p[Wire::LookupReadTags];
     let q_lookup = &p[Wire::QLookup];

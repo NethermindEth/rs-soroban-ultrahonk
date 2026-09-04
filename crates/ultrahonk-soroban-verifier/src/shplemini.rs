@@ -22,17 +22,24 @@ use soroban_sdk::Env;
 /// Verify the Shplemini batch-opening claim.
 ///
 /// High-level flow (matching BB):
-/// 1. Compute powers of Gemini evaluation challenge `r^{2^i}`.
-/// 2. Batch-invert all Shplonk/Gemini denominators (`z ± r^{2^j}`, fold-round
-///    denominators, and `r` itself).
-/// 3. Compute Shplonk scalar weights for unshifted and shifted polynomial batches.
-/// 4. Accumulate batched multilinear evaluation `∑ ρⁱ·evalᵢ`.
-/// 5. Load VK + proof commitments into MSM arrays (shifted scalars merged into
-///    unshifted counterparts to match BB's `remove_repeated_commitments`).
-/// 6. Reconstruct positive Gemini fold evaluations `Aⱼ(r^{2^j})`.
-/// 7. Accumulate constant term and fold-round MSM scalars.
-/// 8. Add generator (with constant-term scalar) and KZG quotient (with scalar `z`).
-/// 9. Single MSM + pairing check.
+/// 1. Compute powers of the Gemini evaluation challenge, `r_pows[i] = r^{2^i}`,
+///    and batch-invert every Shplonk/Gemini denominator in one pass.
+/// 2. Allocate the MSM commitment and scalar arrays.
+/// 3. Compute the Shplonk scalar weights for the unshifted and shifted batches.
+/// 4. Place the Shplonk `Q` commitment.
+/// 5. Weight the sumcheck evaluations and accumulate `∑ ρⁱ·evalᵢ`.
+/// 6. Load VK + proof commitments into the MSM arrays (shifted scalars merged
+///    into their unshifted counterparts, matching BB's `remove_repeated_commitments`).
+/// 7. Folding rounds: reconstruct the positive Gemini fold evaluations
+///    `Aⱼ(r^{2^j})` using the batch-inverted denominators.
+/// 8. Accumulate the Shplonk constant term.
+/// 9. Further folding: per-round MSM scalars and fold commitments.
+/// 10. Add the generator, weighted by the constant-term accumulator.
+/// 11. Add the KZG quotient, weighted by `z`.
+/// 12. Single MSM + pairing check.
+///
+/// Each step number above corresponds to the matching `// n)` label in the
+/// function body.
 ///
 /// BB: `commitment_schemes/shplonk/shplemini.hpp::ShpleminiVerifier_::compute_batch_opening_claim`
 pub fn verify_shplemini(
@@ -55,21 +62,24 @@ pub fn verify_shplemini(
         r_pows[i] = &r_pows[i - 1] * &r_pows[i - 1];
     }
 
+    // Notation: r_pows[j] holds r^{2^j}, NOT r to the power j. Below, `r_pows[j]`
+    // is written out explicitly to avoid reading `r^j` as the j-th power of r.
+    //
     // We need the following inversions:
-    //   - (z - r^0), (z + r^0)          for shplonk weights (pos0, neg0)
-    //   - gemini_r                       for shifted weight
-    //   - (r^j*(1-u_j) + u_j)           for j in 1..=log_n  (fold round denoms)
-    //   - (z - r^j), (z + r^j)          for j in 1..log_n   (further folding)
+    //   - (z - r_pows[0]), (z + r_pows[0])      for shplonk weights (pos0, neg0)
+    //   - gemini_r                               for shifted weight
+    //   - (r_pows[j-1]*(1-u_j) + u_j)           for j in 1..=log_n  (fold round denoms)
+    //   - (z - r_pows[j]), (z + r_pows[j])      for j in 1..log_n   (further folding)
     //
     // Total: 2 + 1 + log_n + 2*(log_n - 1) = 3*log_n + 1 values.
 
     // Collect all values to invert into a flat array.
     // Layout:
-    //   [0]           = z - r^0
-    //   [1]           = z + r^0
+    //   [0]           = z - r_pows[0]
+    //   [1]           = z + r_pows[0]
     //   [2]           = gemini_r
     //   [3 .. 3+log_n)  = fold round denominators (j = log_n down to 1)
-    //   [3+log_n .. 3+log_n + 2*(log_n-1))  = pairs (z - r^j, z + r^j) for j=1..log_n
+    //   [3+log_n .. 3+log_n + 2*(log_n-1))  = pairs (z - r_pows[j], z + r_pows[j]) for j=1..log_n
     // Max batch size: 3*CONST_PROOF_SIZE_LOG_N + 1 (upper bound when log_n == CONST_PROOF_SIZE_LOG_N)
     const MAX_BATCH: usize = 3 * CONST_PROOF_SIZE_LOG_N + 1;
     let batch_size = 3 + log_n + 2 * (log_n - 1);

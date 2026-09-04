@@ -31,7 +31,8 @@ impl Fr {
         Self(Bn254Fr::from_bytes(BytesN::from_array(env, value)))
     }
 
-    /// Precomputed NEG_HALF = (p - 1)/2 in BN254 scalar field.
+    /// Precomputed NEG_HALF = (r - 1)/2, where `r` is the BN254 *scalar*-field
+    /// modulus (not the base-field modulus `p`). Equivalently -1/2 mod r.
     #[inline(always)]
     pub fn neg_half(env: &Env) -> Self {
         Self(Bn254Fr::from_bytes(bytesn!(

@@ -109,7 +109,8 @@ fn compute_next_target_sum(
     batch_inverse(&denoms, &mut inv_denoms)
         .map_err(|_| "sumcheck: barycentric denominator is zero")?;
 
-    // Σ u_i * inv_denom_i
+    // Σ y_i * inv_denom_i, where y_i are the round univariate's coefficients
+    // (`u` denotes the sumcheck round challenge elsewhere and is not summed here)
     let mut acc = zero.clone();
     for (univariate, inv_denom) in round_univariate.iter().zip(inv_denoms.iter()) {
         acc = acc + (univariate * inv_denom);

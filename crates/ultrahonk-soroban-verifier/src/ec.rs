@@ -25,8 +25,12 @@ const RHS_G2_BYTES: [u8; 128] = [
     0xe3, 0xd1, 0xe7, 0x69, 0x0c, 0x43, 0xd3, 0x7b, 0x4c, 0xe6, 0xcc, 0x01, 0x66, 0xfa, 0x7d, 0xaa,
 ];
 
-/// Negated G2 generator point `-[1]_2` (or the second fixed G2 point in the
-/// BN254 pairing precompile input).
+/// The structured-reference-string G2 element `[x]_2` (Barretenberg's `vk.g2_x`).
+///
+/// This is NOT the negated generator `-[1]_2`: negation preserves the x-coordinate,
+/// and this constant's x differs from `RHS_G2_BYTES` entirely, so it is a different
+/// point. The KZG check negates on the G1 side instead (`shplemini.rs` passes `-Q`
+/// as the second G1 argument), so the G2 element paired with it is un-negated.
 ///
 /// Provenance: extracted from Barretenberg v0.82.2
 /// `barretenberg/cpp/src/barretenberg/dsl/acir_proofs/honk_contract.hpp`
@@ -45,6 +49,19 @@ const LHS_G2_BYTES: [u8; 128] = [
 
 /// Uncompressed G1 point at infinity (64 zero bytes), Ethereum order x||y.
 const G1_INFINITY_AFFINE_BYTES: [u8; 64] = [0u8; 64];
+
+/// Accessors exposing the fixed G2 constants so a regression test can pin their
+/// bytes. The constants are the guard against the `LHS_G2_BYTES` mislabel (audit
+/// N-01), not the comments describing them.
+#[inline(always)]
+pub fn rhs_g2_bytes_for_test() -> [u8; 128] {
+    RHS_G2_BYTES
+}
+
+#[inline(always)]
+pub fn lhs_g2_bytes_for_test() -> [u8; 128] {
+    LHS_G2_BYTES
+}
 
 #[inline(always)]
 pub fn rhs_g2_affine(env: &Env) -> Bn254G2Affine {
