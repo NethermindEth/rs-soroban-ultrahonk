@@ -30,8 +30,8 @@ pub enum Error {
     VkNotSet = 5,
     /// Constructor has already been called; VK is immutable.
     AlreadyInitialized = 6,
-    /// A VK G1 commitment was malformed: coordinate out of range, non-canonical
-    /// encoding, or a point that is not on the curve.
+    /// A VK G1 commitment was malformed: a coordinate at or above the base field
+    /// modulus, or a point that is not on the BN254 curve.
     VkInvalidPoint = 7,
 }
 

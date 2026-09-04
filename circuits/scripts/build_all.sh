@@ -57,6 +57,11 @@ assert_versions() {
   echo "• toolchain verified: nargo ${nv} (${NARGO_BIN}), bb ${bv} (${BB_BIN})"
 }
 
+# Toolchain policy: an existing nargo/bb on PATH (or a NARGO/BB override) is NOT
+# replaced. Instead resolve_toolchain + assert_versions, below, fail the build if it
+# is not exactly NOIR_VERSION/BB_VERSION. This differs from auto-installing the
+# pinned versions over whatever is present, but reaches the same guarantee: no
+# artifact is ever produced by an unpinned toolchain.
 install_nargo() {
   if command -v nargo >/dev/null 2>&1; then return; fi
 

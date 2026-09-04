@@ -57,11 +57,13 @@ const G1_INFINITY_AFFINE_BYTES: [u8; 64] = [0u8; 64];
 /// Accessors exposing the fixed G2 constants so a regression test can pin their
 /// bytes. The constants are the guard against the `LHS_G2_BYTES` mislabel (audit
 /// N-01), not the comments describing them.
+#[doc(hidden)]
 #[inline(always)]
 pub fn rhs_g2_bytes_for_test() -> [u8; 128] {
     RHS_G2_BYTES
 }
 
+#[doc(hidden)]
 #[inline(always)]
 pub fn lhs_g2_bytes_for_test() -> [u8; 128] {
     LHS_G2_BYTES
