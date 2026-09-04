@@ -1,9 +1,11 @@
 //! Core type definitions for the UltraHonk verifier.
 //!
 //! `VerificationKey`, `Proof`, `Transcript`, and `RelationParameters` layouts
-//! are derived from Barretenberg `UltraFlavor` v0.82.2.
+//! match Barretenberg v0.87.0 `UltraKeccakFlavor` (non-ZK, Keccak transcript),
+//! which is the declared target. They were originally written against v0.82.2;
+//! see VERIFIER_PROVENANCE.md for lineage versus target.
 //!
-//! BB reference: `barretenberg/flavor/ultra_flavor.hpp`
+//! BB reference: `barretenberg/stdlib_circuit_builders/ultra_flavor.hpp`
 
 use crate::field::Fr;
 use soroban_sdk::crypto::bn254::Bn254G1Affine;
@@ -24,7 +26,7 @@ pub const NUMBER_OF_ALPHAS: usize = NUMBER_OF_SUBRELATIONS - 1;
 /// shifted wires) to its position in the `AllEntities` tuple.  Indices 0–34 are
 /// unshifted; 35–39 are the shifted counterparts of `Wl`, `Wr`, `Wo`, `W4`, `ZPerm`.
 ///
-/// BB: `flavor/ultra_flavor.hpp::AllEntities` / `CommitmentLabels`
+/// BB: `stdlib_circuit_builders/ultra_flavor.hpp::AllEntities` / `CommitmentLabels`
 #[derive(Copy, Clone, Debug)]
 pub enum Wire {
     Qm = 0,
@@ -207,7 +209,7 @@ impl G1Point {
 /// `public_inputs_size`, `pub_inputs_offset`) followed by 27 G1 commitments
 /// (64 bytes each) in `PrecomputedEntities` order.
 ///
-/// BB: `flavor/ultra_flavor.hpp::VerificationKey_`
+/// BB: `stdlib_circuit_builders/ultra_flavor.hpp::VerificationKey_`
 #[derive(Clone, Debug)]
 pub struct VerificationKey {
     pub circuit_size: u64,
@@ -258,7 +260,7 @@ pub struct VerificationKey {
 /// - 28 Fr elements (Gemini fold evaluations)
 /// - 2 G1 commitments (Shplonk Q + KZG quotient)
 ///
-/// BB: `flavor/ultra_flavor.hpp::Proof`
+/// BB: `stdlib_circuit_builders/ultra_flavor.hpp::Proof`
 #[derive(Clone, Debug)]
 pub struct Proof {
     // Pairing point object (16 Fr elements)

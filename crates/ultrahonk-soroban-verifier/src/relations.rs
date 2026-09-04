@@ -2,9 +2,12 @@
 //!
 //! Evaluates all 26 subrelations across 8 relation families at the purported
 //! evaluation point, then batches them with independent alpha challenges.
-//! Every formula was verified line-by-line against Barretenberg v0.82.2.
+//! Every formula was verified line-by-line against Barretenberg v0.82.2 during
+//! the 2026-05-28 internal review; that review has not been re-run against the
+//! declared target v0.87.0. The relation algebra is unchanged between the two.
+//! See VERIFIER_PROVENANCE.md §4.2.
 //!
-//! BB reference (v0.82.2):
+//! BB reference (v0.87.0):
 //!   - `relations/ultra_arithmetic_relation.hpp`
 //!   - `relations/permutation_relation.hpp`
 //!   - `relations/logderiv_lookup_relation.hpp`

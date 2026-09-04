@@ -3,10 +3,10 @@
 //! Handles the fixed-size byte layouts emitted by the Barretenberg native prover.
 //! G1 coordinates use the BN254 base-field limb split (low 136 bits + high ≤118 bits).
 //!
-//! BB reference (v0.82.2):
+//! BB reference (v0.87.0):
 //!   - `honk/proof_system/types/proof.hpp`
-//!   - `flavor/ultra_flavor.hpp::Proof`
-//!   - `flavor/ultra_flavor.hpp::VerificationKey_`
+//!   - `stdlib_circuit_builders/ultra_flavor.hpp::Proof`
+//!   - `stdlib_circuit_builders/ultra_flavor.hpp::VerificationKey_`
 
 use crate::field::Fr;
 use crate::types::{

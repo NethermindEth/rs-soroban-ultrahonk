@@ -5,10 +5,34 @@ This document records the 1:1 correspondence between the Rust Soroban
 It is intended as a permanent audit trail so that future maintainers can
 re-validate the implementation when BB is upgraded or when bugs are suspected.
 
-**Barretenberg source of truth:** `aztec-packages` tag **v0.82.2**  
-**Audit date:** 2026-05-28  
-**Auditor:** Kimi Code CLI  
-**Scope:** Non-ZK, non-recursive, native BN254 UltraHonk path only.
+- **Supported toolchain (target):** `aztec-packages` tag **v0.87.0**
+- **Port lineage (origin):** `aztec-packages` tag **v0.82.2**, inherited from the
+  original `rs-soroban-ultrahonk`
+- **Implemented flavor:** **`UltraKeccakFlavor`** — non-ZK, Keccak transcript
+- **Audit date:** 2026-05-28 (internal); OpenZeppelin external audit
+  2026-08-10 → 2026-08-28
+- **Scope:** Non-ZK, non-recursive, native BN254 UltraHonk path only
+
+> **Version note — lineage versus target.** These are two different facts and
+> earlier revisions of this document conflated them by recording only the first.
+>
+> *Lineage:* the port was written from `v0.82.2`, inherited from the original
+> `rs-soroban-ultrahonk`. That is accurate history and is retained here; it is
+> why the module headers previously cited `v0.82.2`, and it is the right
+> starting point for anyone tracing a line of this crate back to its origin.
+>
+> *Target:* the serialization surface the crate actually parses is the `v0.87.0`
+> default layout — 456 field elements, being a 440-element proof body plus the
+> 16-element pairing-point object. `v0.82.2` emits that same layout only when
+> invoked as `bb prove -s ultra_honk --oracle_hash keccak --init_kzg_accumulator`.
+> Both versions therefore *work*, each with its own verification key, but they
+> are not interchangeable.
+>
+> The supported toolchain is `v0.87.0`, and module headers now cite it for that
+> reason rather than because the code was written against it. Note that both
+> versions produce a 440-field proof body, so a version mismatch is **not**
+> detectable by the proof-length check — it surfaces later as a failed pairing
+> check. Proofs and verification keys must come from the same version.
 
 ---
 
@@ -18,7 +42,7 @@ The verifier implements **exactly** the following BB path:
 
 | Feature                                          | Status            |
 |--------------------------------------------------|-------------------|
-| UltraFlavor (native BN254)                       | ✅ Full support    |
+| `UltraKeccakFlavor` (native BN254, non-ZK)        | ✅ Full support    |
 | Keccak-256 transcript                            | ✅ Full support    |
 | Non-ZK sumcheck                                  | ✅ Full support    |
 | 26 subrelations (8 families)                     | ✅ Full support    |
@@ -29,42 +53,42 @@ The verifier implements **exactly** the following BB path:
 | Rollup / IPA (Grumpkin)                          | ❌ Not implemented |
 | Poseidon2 transcript                             | ❌ Not implemented |
 
-**Constants aligned with BB v0.82.2:**
+**Constants aligned with BB v0.87.0:**
 
 | Constant                          | Value | BB Source          |
 |-----------------------------------|-------|--------------------|
-| `CONST_PROOF_SIZE_LOG_N`          | 28    | `ultra_flavor.hpp` |
-| `NUMBER_OF_SUBRELATIONS`          | 26    | `ultra_flavor.hpp` |
-| `BATCHED_RELATION_PARTIAL_LENGTH` | 8     | `ultra_flavor.hpp` |
-| `NUMBER_OF_ENTITIES`              | 40    | `ultra_flavor.hpp` |
-| `NUMBER_UNSHIFTED`                | 35    | `ultra_flavor.hpp` |
-| `NUMBER_TO_BE_SHIFTED`            | 5     | `ultra_flavor.hpp` |
-| `PAIRING_POINTS_SIZE`             | 16    | `ultra_flavor.hpp` |
-| `NUMBER_OF_ALPHAS`                | 25    | `ultra_flavor.hpp` |
-| `PROOF_FIELDS`                    | 456   | `proof_length.hpp` |
+| `CONST_PROOF_SIZE_LOG_N`          | 28    | `stdlib_circuit_builders/ultra_flavor.hpp` |
+| `NUMBER_OF_SUBRELATIONS`          | 26    | `stdlib_circuit_builders/ultra_flavor.hpp` |
+| `BATCHED_RELATION_PARTIAL_LENGTH` | 8     | `stdlib_circuit_builders/ultra_flavor.hpp` |
+| `NUMBER_OF_ENTITIES`              | 40    | `stdlib_circuit_builders/ultra_flavor.hpp` |
+| `NUMBER_UNSHIFTED`                | 35    | `stdlib_circuit_builders/ultra_flavor.hpp` |
+| `NUMBER_TO_BE_SHIFTED`            | 5     | `stdlib_circuit_builders/ultra_flavor.hpp` |
+| `PAIRING_POINTS_SIZE`             | 16    | `stdlib_circuit_builders/ultra_flavor.hpp` |
+| `NUMBER_OF_ALPHAS`                | 25    | `stdlib_circuit_builders/ultra_flavor.hpp` |
+| `PROOF_FIELDS`                    | 456   | `stdlib_circuit_builders/ultra_flavor.hpp` (`PROOF_LENGTH_WITHOUT_PUB_INPUTS` + `PAIRING_POINTS_SIZE`) |
 
 ---
 
 ## 2. Architecture Map
 
 ```
-Rust Module                         BB Component (v0.82.2)
+Rust Module                         BB Component (v0.87.0)
 ─────────────────────────────────────────────────────────────────────────────
 transcript.rs    ─────────────────► transcript/transcript.hpp
                                     oink_verifier.cpp (challenge rounds)
                                     ultra_verifier.cpp (gate challenges)
                                     sumcheck/sumcheck.hpp (sumcheck challenges)
                                     commitment_schemes/shplonk/shplemini.hpp
-                                    
+
 verifier.rs      ─────────────────► ultra_verifier.cpp::verify_proof
                                     oink_verifier.cpp::OinkVerifier::verify
                                     decider_verifier.cpp::DeciderVerifier_::verify
-                                    
+
 sumcheck.rs      ─────────────────► sumcheck/sumcheck.hpp::SumcheckVerifier::verify
                                     sumcheck/sumcheck_round.hpp
                                     polynomials/barycentric.hpp
                                     polynomials/gate_separator.hpp
-                                    
+
 relations.rs     ─────────────────► relations/ultra_arithmetic_relation.hpp
                                     relations/permutation_relation.hpp
                                     relations/logderiv_lookup_relation.hpp
@@ -74,17 +98,17 @@ relations.rs     ─────────────────► relation
                                     relations/poseidon2_external_relation.hpp
                                     relations/poseidon2_internal_relation.hpp
                                     sumcheck_round.hpp::compute_full_relation_purported_value
-                                    
+
 shplemini.rs     ─────────────────► commitment_schemes/shplonk/shplemini.hpp
                                     commitment_schemes/kzg/kzg.hpp
-                                    
-types.rs         ─────────────────► flavor/ultra_flavor.hpp
+
+types.rs         ─────────────────► stdlib_circuit_builders/ultra_flavor.hpp
                                     relations/relation_parameters.hpp
-                                    
+
 utils.rs         ─────────────────► honk/proof_system/types/proof.hpp
-                                    flavor/ultra_flavor.hpp::Proof
-                                    flavor/ultra_flavor.hpp::VerificationKey_
-                                    
+                                    stdlib_circuit_builders/ultra_flavor.hpp::Proof
+                                    stdlib_circuit_builders/ultra_flavor.hpp::VerificationKey_
+
 ec.rs            ─────────────────► Host bn254_g1_msm / pairing_check
                                     (same cryptographic primitives as BB native)
 ```
@@ -151,8 +175,8 @@ ec.rs            ─────────────────► Host bn2
 
 | Rust Function                          | BB Equivalent                                      |
 |----------------------------------------|----------------------------------------------------|
-| `load_proof`                           | `flavor/ultra_flavor.hpp::Proof` layout            |
-| `load_vk_from_bytes`                   | `flavor/ultra_flavor.hpp::VerificationKey_` layout |
+| `load_proof`                           | `stdlib_circuit_builders/ultra_flavor.hpp::Proof` layout            |
+| `load_vk_from_bytes`                   | `stdlib_circuit_builders/ultra_flavor.hpp::VerificationKey_` layout |
 | `coord_to_halves_be` / `combine_limbs` | `field_conversion::calc_num_bn254_frs`             |
 
 ---
@@ -168,7 +192,14 @@ ec.rs            ─────────────────► Host bn2
 
 ### 4.2 Verified-Aligned Behaviours
 
-The following were verified byte-for-byte or line-by-line against BB v0.82.2:
+The following were checked line-by-line during the 2026-05-28 internal review,
+against BB **v0.82.2** — the version the port was written from. This is a record
+of a review that was performed, not a proof of equivalence, and it has **not**
+been re-run against v0.87.0.
+
+Re-running it against v0.87.0, by the procedure in section 7, is outstanding. The relation algebra and transcript construction are unchanged
+between the two versions, but the serialization surface is not, so the
+deserialization entry below is the one most in need of re-checking:
 
 - **Transcript:** All 13 challenge rounds, Keccak-256 hashing, 128-bit challenge splitting, G1 point serialization (lo136/hi118), uint64 serialization.
 - **Public-input delta:** Formula, loop bounds, pairing-point-object inclusion, offset handling.
@@ -258,14 +289,14 @@ All verification is validated against BB-generated fixtures in `circuits/`:
 
 | Fixture          | Circuit Size | Description                          |
 |------------------|--------------|--------------------------------------|
-| `simple_circuit` | 2^3          | Basic arithmetic + permutation       |
-| `fib_chain`      | 2^5          | Fibonacci sequence in-circuit        |
-| `small_circuit`  | 2^3          | Minimal gate set                     |
-| `lookup_heavy`   | 2^5          | Heavy lookup-table usage             |
-| `range_heavy`    | 2^5          | Heavy range-check usage              |
-| `many_pubs`      | 2^5          | Many public inputs                   |
-| `identity`       | —            | Identity circuit (contract e2e)      |
-| `tornado`        | —            | Tornado-style circuit (contract e2e) |
+| `simple_circuit` | 2^12         | Basic arithmetic + permutation       |
+| `fib_chain`      | 2^12         | Fibonacci sequence in-circuit        |
+| `small_circuit`  | 2^12         | Minimal gate set                     |
+| `lookup_heavy`   | 2^13         | Heavy lookup-table usage             |
+| `range_heavy`    | 2^13         | Heavy range-check usage              |
+| `many_pubs`      | 2^12         | Many public inputs                   |
+| `identity`       | 2^12         | Identity circuit (contract e2e)      |
+| `tornado`        | 2^13         | Tornado-style circuit (contract e2e) |
 
 Test commands:
 ```bash
@@ -288,7 +319,9 @@ When Barretenberg is upgraded, follow these steps to validate the Rust verifier:
 
 1. **Update the BB source tree** to the new tag and note the old→new tag in this file.
 2. **Check constants** in `types.rs` against `ultra_flavor.hpp`. Any change to `NUM_ALL_ENTITIES`, `NUM_PRECOMPUTED`, `NUM_WITNESS`, `NUM_SHIFTED`, `NUM_SUBRELATIONS`, `BATCHED_RELATION_PARTIAL_LENGTH`, or `CONST_PROOF_SIZE_LOG_N` is **CRITICAL**.
-3. **Check proof size** in `lib.rs` (`PROOF_FIELDS`, `PROOF_BYTES`) against `proof_length.hpp`.
+3. **Check proof size** in `lib.rs` (`PROOF_FIELDS`, `PROOF_BYTES`) against
+   `stdlib_circuit_builders/ultra_flavor.hpp::PROOF_LENGTH_WITHOUT_PUB_INPUTS`, remembering
+   that `PROOF_FIELDS` adds `PAIRING_POINTS_SIZE` on top of it.
 4. **Audit transcript** (`transcript.rs`) against `transcript.hpp` and `oink_verifier.cpp`. Challenge labels are **not** hashed in either codebase, but the *order* of absorptions must match exactly.
 5. **Audit sumcheck** (`sumcheck.rs`) against `sumcheck.hpp`. Verify barycentric weights if `BATCHED_RELATION_PARTIAL_LENGTH` changes.
 6. **Audit relations** (`relations.rs`) against the 8 relation headers. Even a single coefficient change breaks verification.
@@ -311,6 +344,4 @@ When Barretenberg is upgraded, follow these steps to validate the Rust verifier:
 
 ---
 
-*Last updated: 2026-05-28*  
-*Barretenberg tag: v0.82.2*
-8
+*Last updated: 2026-09-04 — Barretenberg tag (target): v0.87.0*

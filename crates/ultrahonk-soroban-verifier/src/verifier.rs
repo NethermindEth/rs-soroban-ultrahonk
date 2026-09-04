@@ -4,7 +4,7 @@
 //! `oink_verifier.cpp`, and `decider_verifier.cpp`.  The Rust code inlines the
 //! Oink and Decider steps into a single `verify` method.
 //!
-//! BB reference (v0.82.2):
+//! BB reference (v0.87.0):
 //!   - `ultra_honk/ultra_verifier.cpp::UltraVerifier_::verify_proof`
 //!   - `ultra_honk/oink_verifier.cpp::OinkVerifier::verify`
 //!   - `ultra_honk/decider_verifier.cpp::DeciderVerifier_::verify`
@@ -58,10 +58,11 @@ pub struct UltraHonkVerifier {
 impl UltraHonkVerifier {
     /// Build a verifier from an already-parsed key.
     ///
-    /// Crate-internal, per the finding's first option. Documenting the precondition
-    /// would not have been a constraint here, because `VerificationKey`'s fields are
-    /// public; making the constructor internal means a key can only be obtained from
-    /// `load_vk_from_bytes`. Use [`Self::new`] instead.
+    /// Crate-internal: a `VerificationKey` can only be obtained from
+    /// [`load_vk_from_bytes`], which validates every commitment, so this cannot be
+    /// reached with an unvalidated key. Exposing it would reintroduce that path,
+    /// since the struct's fields are public. Use [`Self::new`] instead, which parses
+    /// and validates the key bytes.
     pub(crate) fn new_with_vk(env: &Env, vk: crate::types::VerificationKey) -> Self {
         Self {
             env: env.clone(),
