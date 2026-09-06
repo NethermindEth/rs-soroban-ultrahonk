@@ -8,7 +8,7 @@
 //! assignment, the single `SUBRELATION_LINEARLY_INDEPENDENT = false` flag, and
 //! the Poseidon2 internal-matrix diagonal, with no divergence. The relation
 //! algebra is unchanged between the two versions. See VERIFIER_PROVENANCE.md
-//! §4.2 and audit/v087-review.md §4.
+//! §4.2.
 //!
 //! BB reference (v0.87.0):
 //!   - `relations/ultra_arithmetic_relation.hpp`

@@ -197,10 +197,9 @@ The following were checked line-by-line during the 2026-05-28 internal review,
 against BB **v0.82.2** — the version the port was written from.
 
 **The review was re-run against the declared target, BB v0.87.0, on 2026-09-04.**
-It covered all eight surfaces below by the procedure in section 7, and its record —
-a per-surface verdict table with citations on both sides, the findings, and the
-list of what could not be verified — is `audit/v087-review.md`. That closes
-OpenZeppelin finding L-03. The outcome: **no soundness or completeness divergence**.
+It followed the procedure in section 7; the checked behaviors and relevant
+implementation differences are summarized below.
+The outcome: **no soundness or completeness divergence found**.
 Two behavioral differences were found that change only the stage and type of
 rejection, never the accept/reject outcome:
 
@@ -216,14 +215,13 @@ The review also corrected two source comments that cited bb symbols which do not
 exist at v0.87.0 — `ultra_flavor.hpp::Proof` and `ultra_flavor.hpp::VerificationKey_`.
 The second was the more misleading: it resolves to `UltraFlavor::VerificationKey`,
 whose `MSGPACK_FIELDS` carries a fifth header field this crate must *not* parse. The
-layout implemented here is `UltraKeccakFlavor`'s. See finding F-3; §2 and §3.6 below
-are corrected to match.
+layout implemented here is `UltraKeccakFlavor`'s. Sections 2 and 3.6 are corrected
+to match.
 
 Three further differences are unreachable degenerate-input paths where this
-verifier returns a clean error and bb calls `throw_or_abort`; they are recorded as
-finding F-4 in the review and need no action.
+verifier returns a clean error and bb calls `throw_or_abort`; these need no action.
 
-Both records are kept below: the 2026-05-28 entries state what was checked, and the
+The entries below state what was checked on 2026-05-28, and the
 v0.87.0 review re-confirmed each of them. The relation algebra and transcript
 construction are unchanged between the two versions; the serialization surface is
 not, and the deserialization entry was therefore the one re-derived most carefully.
@@ -245,7 +243,7 @@ its accepted proof language explicitly rather than leaving it implicit:
 | Surface | Policy | Relative to bb v0.87.0 |
 |---|---|---|
 | G1 limb encodings | **Canonical only** — `lo < 2^136`, `hi < 2^118`, at parse time | Removes a divergence: bb reconstructs by addition and rejects these |
-| G1 coordinates | **Canonical only** — rejected at or above `p`, at parse time | Same outcome, earlier: bb reduces mod `p` but hashed the raw limbs, so rejects at the pairing check. Distinct from the limb widths above — `x + p` can satisfy both bounds. See `audit/v087-review.md` F-1 |
+| G1 coordinates | **Canonical only** — rejected at or above `p`, at parse time | Same outcome, earlier: bb reduces mod `p` but hashed the raw limbs, so rejects at the pairing check. Distinct from the limb widths above — `x + p` can satisfy both bounds. |
 | Proof scalar words | **Canonical only** — rejected at or above `r` | **Deliberate narrowing**: bb's native decode reduces silently |
 | Public inputs | **Canonical only** — rejected at or above `r` | Stricter than a bare reduction; see note 3 |
 | Padded Gemini evaluations | **Zero required** — rejected at parse time (slots `log_n..28`) | Matches bb: bb binds these via its constant-term accumulator and rejects non-zero |
