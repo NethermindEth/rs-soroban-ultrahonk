@@ -231,10 +231,10 @@ impl MixerContract {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "testutils"))]
 #[contractimpl]
 impl MixerContract {
-    /// Test-only helper to override the stored root. Only compiled into test builds.
+    /// Test-only helper to override the stored root, enabled by `testutils`.
     pub fn set_root(env: Env, root: BytesN<32>) -> Result<(), MixerError> {
         env.storage().instance().set(&key_root(), &root);
         Ok(())
