@@ -262,8 +262,9 @@ fn generate_gate_challenges(
 
 /// Generate the Sumcheck round challenges u₀ … u₂₇.
 ///
-/// For each round the previous challenge bytes and the round's univariate
-/// coefficients are hashed together; the low 128 bits become uᵢ.
+/// For each round the previous challenge bytes and the round's 8 univariate
+/// evaluations are hashed together; the low 128 bits become uᵢ. The univariate is
+/// transmitted as its values at the domain points 0..8, not as coefficients.
 ///
 /// BB: `sumcheck/sumcheck.hpp::SumcheckVerifier::verify` (challenge loop)
 fn generate_sumcheck_challenges(
@@ -349,16 +350,17 @@ fn generate_shplonk_z_challenge(env: &Env, proof: &Proof, previous_challenge: Fr
 
 /// Build the full transcript: all Fiat–Shamir challenges for UltraHonk verification.
 ///
-/// Challenge order (identical to BB native verifier):
-/// 1. η, η₂, η₃  – sorted-list / lookup accumulator  
-/// 2. β, γ        – log-derivative inverse  
-/// 3. α₀…α₂₄      – subrelation batching  
-/// 4. gate βᵢ     – sumcheck gate separator  
-/// 5. uᵢ          – sumcheck round challenges  
-/// 6. ρ           – Gemini batching  
-/// 7. r           – Gemini folding  
-/// 8. ν           – Shplonk batching  
-/// 9. z           – Shplonk evaluation point  
+/// Challenge order (identical to BB native verifier). The numbers match the
+/// `// n)` labels in the function body, so a step traced by number lands on the
+/// block that produces it:
+/// 1. η, η₂, η₃, then β, γ  – sorted-list accumulator, then log-derivative inverse
+/// 2. α₀…α₂₄                – subrelation batching
+/// 3. gate βᵢ               – sumcheck gate separator
+/// 4. uᵢ                    – sumcheck round challenges
+/// 5. ρ                     – Gemini batching
+/// 6. r                     – Gemini folding
+/// 7. ν                     – Shplonk batching
+/// 8. z                     – Shplonk evaluation point
 ///
 /// BB: `oink_verifier.cpp::OinkVerifier::verify` + `ultra_verifier.cpp::verify_proof` +
 ///      `sumcheck/sumcheck.hpp::SumcheckVerifier::verify` +
@@ -376,7 +378,7 @@ fn validate_proof(proof: &Proof) -> Result<(), &'static str> {
     }
     for univ in proof.sumcheck_univariates.iter() {
         if univ.len() != BATCHED_RELATION_PARTIAL_LENGTH {
-            return Err("invalid sumcheck_univariate coefficient count");
+            return Err("invalid sumcheck_univariate evaluation count");
         }
     }
     if proof.sumcheck_evaluations.len() != NUMBER_OF_ENTITIES {

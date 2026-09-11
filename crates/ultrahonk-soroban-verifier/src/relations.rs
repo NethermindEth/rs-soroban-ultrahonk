@@ -375,7 +375,7 @@ fn accumulate_auxiliary_relation(
     evals[12] = auxiliary_identity * q_aux * domain_sep;
 }
 
-/// Accumulate Poseidon external subrelations (indices 18..21).
+/// Accumulate Poseidon2 external-round subrelations (indices 18..21).
 ///
 /// BB: `relations/poseidon2_external_relation.hpp::Poseidon2ExternalRelation::accumulate`
 fn accumulate_poseidon_external_relation(p: &[Fr], evals: &mut [Fr], domain_sep: &Fr) {
@@ -420,7 +420,7 @@ fn accumulate_poseidon_external_relation(p: &[Fr], evals: &mut [Fr], domain_sep:
     evals[21] = (v4 - w4_shift) * q_poseidon_dom;
 }
 
-/// Accumulate Poseidon internal subrelations (indices 22..25).
+/// Accumulate Poseidon2 internal-round subrelations (indices 22..25).
 ///
 /// Uses the internal matrix diagonal constants from `field.rs::Fr::internal_matrix_diagonal`.
 ///
@@ -458,8 +458,11 @@ fn accumulate_poseidon_internal_relation(
 
 /// Batch all 26 subrelations with the independent alpha challenges.
 ///
-/// `UltraFlavor` is a folding flavor, so alphas are independent challenges
-/// (not powers of a single alpha).  Result:
+/// The 25 alphas are independent transcript challenges, not successive powers of
+/// a single α: `transcript.rs::generate_alpha_challenges` derives them through
+/// repeated duplex hashing and challenge splitting, matching BB's
+/// `generate_alphas_round`. Subrelation 0 is unscaled,
+/// so the batched value is
 ///   `evals[0]·1 + evals[1]·α₀ + … + evals[25]·α₂₄`
 ///
 /// BB: `relations/utils.hpp::RelationUtils::scale_and_batch_elements`

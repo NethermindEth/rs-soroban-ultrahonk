@@ -81,13 +81,17 @@ impl UltraHonkVerifier {
 
     /// Verify an UltraHonk proof against the loaded VK.
     ///
-    /// Steps (matching BB verifier flow):
-    /// 1. Parse proof bytes.
-    /// 2. Validate public-input length against VK metadata.
-    /// 3. Generate Fiat–Shamir challenges (Oink rounds).
-    /// 4. Compute `public_inputs_delta` (grand-product permutation argument).
-    /// 5. Run sumcheck verification.
-    /// 6. Run Shplemini batch-opening (Gemini + Shplonk + KZG pairing check).
+    /// Steps (matching BB verifier flow). The numbers match the `// n)` labels in
+    /// the body, so a step traced by number lands on the block that performs it:
+    /// 1. Parse proof bytes (canonical G1 limbs, coordinates and scalars enforced
+    ///    at parse time; see VERIFIER_PROVENANCE.md §4.3).
+    /// 2. Reject non-zero padding in the unused Gemini evaluation slots.
+    /// 3. Validate the public inputs: 32-byte alignment, canonical encodings, and
+    ///    count against VK metadata.
+    /// 4. Generate Fiat–Shamir challenges (Oink rounds).
+    /// 5. Compute `public_inputs_delta` (grand-product permutation argument).
+    /// 6. Run sumcheck verification.
+    /// 7. Run Shplemini batch-opening (Gemini + Shplonk + KZG pairing check).
     ///
     /// BB: `ultra_verifier.cpp::UltraVerifier_::verify_proof`
     /// Note: this takes no `Env` parameter. The verifier's stored handle is used
@@ -102,13 +106,13 @@ impl UltraHonkVerifier {
         // 1) parse proof
         let proof = load_proof(env, proof_bytes).map_err(|_| VerifyError::InvalidInput)?;
 
-        // 2a) reject non-canonical padding in the unused Gemini evaluation slots.
+        // 2) reject non-canonical padding in the unused Gemini evaluation slots.
         // Done here rather than in `load_proof` because it needs log_circuit_size,
         // which comes from the VK. Runs before transcript generation.
         validate_gemini_padding(&proof, self.vk.log_circuit_size as usize)
             .map_err(|_| VerifyError::InvalidInput)?;
 
-        // 2) sanity on public inputs (length and VK metadata if present)
+        // 3) validate public inputs (alignment, canonical encodings, count vs VK)
         if !public_inputs_bytes.len().is_multiple_of(32) {
             return Err(VerifyError::InvalidInput);
         }
@@ -124,7 +128,7 @@ impl UltraHonkVerifier {
             return Err(VerifyError::InvalidInput);
         }
 
-        // 3) Fiat–Shamir transcript
+        // 4) Fiat–Shamir transcript
         let pis_total = provided + PAIRING_POINTS_SIZE as u64;
         let pub_inputs_offset = self.vk.pub_inputs_offset;
         let mut t = generate_transcript(
@@ -137,7 +141,7 @@ impl UltraHonkVerifier {
         )
         .map_err(|_| VerifyError::InvalidInput)?;
 
-        // 4) Public delta
+        // 5) Public delta
         t.rel_params.public_inputs_delta = Self::compute_public_input_delta(
             env,
             public_inputs_bytes,
@@ -149,10 +153,10 @@ impl UltraHonkVerifier {
         )
         .map_err(|_| VerifyError::InvalidInput)?;
 
-        // 5) Sum-check
+        // 6) Sum-check
         verify_sumcheck(env, &proof, &t, &self.vk).map_err(|_| VerifyError::SumcheckFailed)?;
 
-        // 6) Shplonk
+        // 7) Shplemini (Gemini + Shplonk + KZG)
         verify_shplemini(env, &proof, &self.vk, &t).map_err(|_| VerifyError::ShplonkFailed)?;
 
         Ok(())

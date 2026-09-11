@@ -90,13 +90,13 @@ pub fn verify_shplemini(
     to_invert[1] = &tp.shplonk_z + &r_pows[0];
     to_invert[2] = tp.gemini_r.clone();
 
-    // fold round denominators: r^j * (1 - u_j) + u_j, for j = log_n down to 1
+    // fold round denominators: r_pows[j-1] * (1 - u_j) + u_j, for j = log_n down to 1
     for j in (1..=log_n).rev() {
         let u = &tp.sumcheck_u_challenges[j - 1];
         to_invert[3 + (log_n - j)] = &r_pows[j - 1] * &(&one - u) + u;
     }
 
-    // further folding denominators: (z - r^j) and (z + r^j) for j = 1..log_n
+    // further folding denominators: (z - r_pows[j]) and (z + r_pows[j]) for j = 1..log_n
     let further_base = 3 + log_n;
     for j in 1..log_n {
         to_invert[further_base + 2 * (j - 1)] = &tp.shplonk_z - &r_pows[j];

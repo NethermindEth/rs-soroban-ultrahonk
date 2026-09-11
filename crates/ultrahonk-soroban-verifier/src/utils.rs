@@ -85,7 +85,8 @@ pub(crate) fn limbs_are_canonical(lo: &[u8; 32], hi: &[u8; 32]) -> bool {
     hi[17] < 0x40
 }
 
-/// Canonical-encoding variant of [`fr_word32`].
+/// Decode one 32-byte big-endian proof word as a scalar, rejecting non-canonical
+/// encodings.
 ///
 /// `Fr::from_array` reduces modulo the scalar order rather than rejecting, so
 /// `v` and `v + k*r` decode identically and the transcript absorbs the reduced

@@ -68,11 +68,21 @@ fn check_sum(round_univariate: &[Fr], round_target: Fr) -> bool {
     total_sum == round_target
 }
 
-/// Evaluate the round univariate at the challenge point using barycentric interpolation.
+/// Evaluate the round univariate at the round challenge `u` using barycentric
+/// interpolation.
 ///
-/// Computes `B(z) · Σᵢ (yᵢ / (dᵢ · (z − xᵢ)))` where `B(z) = ∏(z − xᵢ)` and
-/// `dᵢ` are the precomputed Lagrange denominators (`BARY_BYTES`).  Uses
-/// Montgomery's batch-inversion trick (1 field inverse instead of 8).
+/// Computes `B(u) · Σᵢ (yᵢ / (dᵢ · (u − xᵢ)))`, where the `yᵢ` are the univariate's
+/// evaluations at the domain points `xᵢ = i` for `i` in `0..8`,
+/// `B(u) = ∏ᵢ (u − xᵢ)`, and `dᵢ = ∏_{j≠i} (xᵢ − xⱼ)` are the precomputed Lagrange
+/// denominators (`BARY_BYTES`: `d₀ = −5040, d₁ = 720, … d₆ = −720, d₇ = 5040`, each
+/// reduced mod `r`). Uses Montgomery's batch-inversion trick (1 field inverse
+/// instead of 8).
+///
+/// Two notational cautions. The challenge is written `u` here and everywhere else
+/// in the crate; `z` is the Shplonk evaluation point in `shplemini.rs`, a different
+/// value. And the `barycentric_weights` parameter holds the denominators `dᵢ`
+/// themselves, which this function divides by — not their reciprocals, which is
+/// what "barycentric weight" usually denotes.
 ///
 /// BB: `sumcheck/sumcheck_round.hpp::SumcheckVerifierRound::compute_next_target_sum`
 ///      (via `Univariate::evaluate` in `polynomials/univariate.hpp`)
@@ -94,7 +104,7 @@ fn compute_next_target_sum(
         }
     }
 
-    // B(χ) = ∏ (χ - i) for i in 0..8
+    // B(u) = ∏ (u - i) for i in 0..8
     // Also collect denominators for batch inversion
     let mut denoms: [Fr; BATCHED_RELATION_PARTIAL_LENGTH] = array::from_fn(|_| zero.clone());
     let mut b_poly = one.clone();
@@ -109,8 +119,8 @@ fn compute_next_target_sum(
     batch_inverse(&denoms, &mut inv_denoms)
         .map_err(|_| "sumcheck: barycentric denominator is zero")?;
 
-    // Σ y_i * inv_denom_i, where y_i are the round univariate's coefficients
-    // (`u` denotes the sumcheck round challenge elsewhere and is not summed here)
+    // Σ y_i * inv_denom_i, where y_i are the round univariate's evaluations
+    // (the summed values are the y_i; the round challenge `u` is not summed)
     let mut acc = zero.clone();
     for (univariate, inv_denom) in round_univariate.iter().zip(inv_denoms.iter()) {
         acc = acc + (univariate * inv_denom);
@@ -137,13 +147,15 @@ fn partially_evaluate_pow(
 
 /// Run the full sumcheck verification protocol.
 ///
-/// For each round `0 .. log_n`:
-/// 1. `check_sum` — verify `Sᵢ(0) + Sᵢ(1) == target`.
-/// 2. `compute_next_target_sum` — barycentric-evaluate `Sᵢ` at challenge `uᵢ`.
-/// 3. `partially_evaluate_pow` — update the gate-separator accumulator.
+/// 1. For each round `0 .. log_n`:
+///    a. `check_sum` — verify `Sᵢ(0) + Sᵢ(1) == target`.
+///    b. `compute_next_target_sum` — barycentric-evaluate `Sᵢ` at challenge `uᵢ`.
+///    c. `partially_evaluate_pow` — update the gate-separator accumulator.
+/// 2. Evaluate all 26 subrelations at the claimed evaluation point and compare
+///    against the final round target.
 ///
-/// After all rounds, evaluate all 26 subrelations at the claimed evaluation
-/// point and compare against the final round target.
+/// The two step numbers correspond to the matching `// n)` labels in the function
+/// body; the per-round steps are lettered to keep the two levels distinct.
 ///
 /// BB: `sumcheck/sumcheck.hpp::SumcheckVerifier::verify`
 pub fn verify_sumcheck(

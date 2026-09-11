@@ -65,7 +65,11 @@ impl Fr {
         )))
     }
 
-    /// Internal matrix diagonal values for Poseidon hash.
+    /// Diagonal of the Poseidon2 internal-round matrix — Poseidon2, not the
+    /// original Poseidon: the two use different round matrices. Consumed by
+    /// `relations.rs::accumulate_poseidon_internal_relation`.
+    ///
+    /// BB: `relations/poseidon2_internal_relation.hpp`
     #[inline(always)]
     pub fn internal_matrix_diagonal(env: &Env) -> [Self; 4] {
         [
