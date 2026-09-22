@@ -21,7 +21,9 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install Stellar CLI
-        uses: stellar/stellar-cli@v26.0.0
+        uses: stellar/stellar-cli@8e402ea28202950b272fbabc34caad4d2f64fe87 # v27.1.0
+        with:
+          version: v27.1.0
 
       - name: Install Node.js
         uses: actions/setup-node@v4
