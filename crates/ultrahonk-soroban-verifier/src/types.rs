@@ -1,9 +1,11 @@
 //! Core type definitions for the UltraHonk verifier.
 //!
 //! `VerificationKey`, `Proof`, `Transcript`, and `RelationParameters` layouts
-//! are derived from Barretenberg `UltraFlavor` v0.82.2.
+//! match Barretenberg v0.87.0 `UltraKeccakFlavor` (non-ZK, Keccak transcript),
+//! which is the declared target. They were originally written against v0.82.2;
+//! see VERIFIER_PROVENANCE.md for lineage versus target.
 //!
-//! BB reference: `barretenberg/flavor/ultra_flavor.hpp`
+//! BB reference: `barretenberg/stdlib_circuit_builders/ultra_flavor.hpp`
 
 use crate::field::Fr;
 use soroban_sdk::crypto::bn254::Bn254G1Affine;
@@ -24,7 +26,7 @@ pub const NUMBER_OF_ALPHAS: usize = NUMBER_OF_SUBRELATIONS - 1;
 /// shifted wires) to its position in the `AllEntities` tuple.  Indices 0–34 are
 /// unshifted; 35–39 are the shifted counterparts of `Wl`, `Wr`, `Wo`, `W4`, `ZPerm`.
 ///
-/// BB: `flavor/ultra_flavor.hpp::AllEntities` / `CommitmentLabels`
+/// BB: `stdlib_circuit_builders/ultra_flavor.hpp::AllEntities` / `CommitmentLabels`
 #[derive(Copy, Clone, Debug)]
 pub enum Wire {
     Qm = 0,
@@ -75,6 +77,44 @@ impl Wire {
     }
 }
 
+/// BN254 base-field modulus `p`, big-endian.
+pub(crate) const BN254_FP_MODULUS_BE: [u8; 32] = [
+    0x30, 0x64, 0x4e, 0x72, 0xe1, 0x31, 0xa0, 0x29, 0xb8, 0x50, 0x45, 0xb6, 0x81, 0x81, 0x58, 0x5d,
+    0x97, 0x81, 0x6a, 0x91, 0x68, 0x71, 0xca, 0x8d, 0x3c, 0x20, 0x8c, 0x16, 0xd8, 0x7c, 0xfd, 0x47,
+];
+
+/// True when `v` is a canonical base-field element, i.e. strictly below `p`.
+///
+/// Big-endian lexicographic comparison is the same as numeric comparison for
+/// fixed-width big-endian encodings, so this is a constant-shape byte compare.
+#[inline]
+pub(crate) fn fp_in_range(v: &[u8; 32]) -> bool {
+    *v < BN254_FP_MODULUS_BE
+}
+
+/// BN254 scalar-field modulus `r`, big-endian.
+pub(crate) const BN254_FR_MODULUS_BE: [u8; 32] = [
+    0x30, 0x64, 0x4e, 0x72, 0xe1, 0x31, 0xa0, 0x29, 0xb8, 0x50, 0x45, 0xb6, 0x81, 0x81, 0x58, 0x5d,
+    0x28, 0x33, 0xe8, 0x48, 0x79, 0xb9, 0x70, 0x91, 0x43, 0xe1, 0xf5, 0x93, 0xf0, 0x00, 0x00, 0x01,
+];
+
+/// True when `v` is a canonical scalar-field element, i.e. strictly below `r`.
+#[inline]
+pub(crate) fn fr_is_canonical(v: &[u8; 32]) -> bool {
+    *v < BN254_FR_MODULUS_BE
+}
+
+/// Why a G1 point encoding was rejected at parse time.
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum PointError {
+    /// A coordinate was greater than or equal to the base-field modulus.
+    CoordinateOutOfRange,
+    /// Coordinates were in range but the point is not on the curve.
+    NotOnCurve,
+    /// A G1 limb carried non-zero padding outside its declared width.
+    NonCanonicalLimb,
+}
+
 /// A BN254 G1 point in affine coordinates.
 ///
 /// Thin wrapper around the Soroban host type `Bn254G1Affine`.
@@ -89,15 +129,58 @@ impl G1Point {
         &self.0
     }
 
-    pub fn from_xy(env: &Env, x: &[u8; 32], y: &[u8; 32]) -> Self {
+    /// Unchecked. Crate-internal only: it performs no range or curve validation, so
+    /// exposing it would let a consumer build a point from untrusted bytes and reach
+    /// the host operations without the checks audit finding L-04 exists to add. Use
+    /// [`Self::try_from_xy`] for anything derived from caller-supplied data.
+    pub(crate) fn from_xy(env: &Env, x: &[u8; 32], y: &[u8; 32]) -> Self {
         let mut bytes: [u8; 64] = [0u8; 64];
         bytes[..32].copy_from_slice(x);
         bytes[32..].copy_from_slice(y);
         Self::from_bytes(env, &bytes)
     }
 
+    /// Validating constructor: rejects malformed encodings instead of deferring
+    /// the failure to a host trap.
+    ///
+    /// The order of the two checks is load-bearing. `Bn254G1Affine::from_array`
+    /// performs no validation at all, and the host's `g1_is_on_curve` is *not*
+    /// a safe first check: it deserialises with `PointValidationMode::NoCheck`,
+    /// but `NoCheck` still parses each coordinate as an `Fp`, so a coordinate at
+    /// or above the base modulus makes that call itself error — which is a trap
+    /// in the guest, i.e. exactly the failure mode we are removing. The guest-side
+    /// range check must therefore come first.
+    pub fn try_from_xy(env: &Env, x: &[u8; 32], y: &[u8; 32]) -> Result<Self, PointError> {
+        // 1) Guest-side range check against the BN254 base modulus. Cannot trap.
+        if !fp_in_range(x) || !fp_in_range(y) {
+            return Err(PointError::CoordinateOutOfRange);
+        }
+        let mut bytes: [u8; 64] = [0u8; 64];
+        bytes[..32].copy_from_slice(x);
+        bytes[32..].copy_from_slice(y);
+        let pt = G1Point(Bn254G1Affine::from_array(env, &bytes));
+        // The point at infinity is encoded as 64 zero bytes and is on the curve.
+        if bytes == [0u8; 64] {
+            return Ok(pt);
+        }
+        // 2) Only now is the host curve check safe to call.
+        if !env.crypto().bn254().g1_is_on_curve(pt.as_bn254()) {
+            return Err(PointError::NotOnCurve);
+        }
+        Ok(pt)
+    }
+
+    /// Validating constructor for the 64-byte `x || y` verification-key layout.
+    pub fn try_from_bytes(env: &Env, bytes: &[u8; 64]) -> Result<Self, PointError> {
+        let x: &[u8; 32] = bytes[..32].try_into().expect("x");
+        let y: &[u8; 32] = bytes[32..].try_into().expect("y");
+        Self::try_from_xy(env, x, y)
+    }
+
+    /// Unchecked. Crate-internal only, for the same reason as [`Self::from_xy`];
+    /// use [`Self::try_from_bytes`] for untrusted input.
     #[inline(always)]
-    pub fn from_bytes(env: &Env, bytes: &[u8; 64]) -> Self {
+    pub(crate) fn from_bytes(env: &Env, bytes: &[u8; 64]) -> Self {
         G1Point(Bn254G1Affine::from_array(env, bytes))
     }
 
@@ -126,7 +209,9 @@ impl G1Point {
 /// `public_inputs_size`, `pub_inputs_offset`) followed by 27 G1 commitments
 /// (64 bytes each) in `PrecomputedEntities` order.
 ///
-/// BB: `flavor/ultra_flavor.hpp::VerificationKey_`
+/// BB: `ultra_keccak_flavor.hpp:132`
+/// (`UltraKeccakFlavor::VerificationKey::MSGPACK_FIELDS`) — not
+/// `UltraFlavor::VerificationKey`, which serialises an extra header field.
 #[derive(Clone, Debug)]
 pub struct VerificationKey {
     pub circuit_size: u64,
@@ -177,7 +262,8 @@ pub struct VerificationKey {
 /// - 28 Fr elements (Gemini fold evaluations)
 /// - 2 G1 commitments (Shplonk Q + KZG quotient)
 ///
-/// BB: `flavor/ultra_flavor.hpp::Proof`
+/// BB: `ultra_flavor.hpp:110` (`PROOF_LENGTH_WITHOUT_PUB_INPUTS`) and `:683-760`
+/// (`Transcript_::{de,}serialize_full_transcript`)
 #[derive(Clone, Debug)]
 pub struct Proof {
     // Pairing point object (16 Fr elements)

@@ -47,6 +47,11 @@ fund:
 build-circuits *names="":
     bash ./circuits/scripts/build_all.sh {{names}}
 
+# Verify freshly built circuit verification keys against circuits/ARTIFACT_HASHES.txt.
+# Pass --update to rewrite the manifest after an intentional circuit change.
+check-circuit-hashes *flags="":
+    bash ./circuits/scripts/check_artifact_hashes.sh {{flags}}
+
 # =============================================================================
 # Contracts — General
 # =============================================================================

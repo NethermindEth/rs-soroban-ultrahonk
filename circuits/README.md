@@ -28,6 +28,15 @@ Build every circuit, one circuit, or a selected list:
 The scripts use Noir `1.0.0-beta.9` and Barretenberg `0.87.0`, installing them
 when missing from `PATH`.
 
+## Known-Good Hashes
+
+The `target/` directories are gitignored, so `circuits/ARTIFACT_HASHES.txt` records the
+SHA-256 of every circuit's `vk` as reviewed. CI rebuilds all circuits and runs
+`circuits/scripts/check_artifact_hashes.sh`, which fails on any mismatch or on a circuit
+with no entry. Regenerate the manifest with `--update` only after an intentional change
+to a circuit, the vendored Poseidon2 source, or the pinned toolchain; each changed entry
+is a changed on-chain verification key.
+
 ## Target Files
 
 After a successful build, `circuits/<name>/target/` contains:

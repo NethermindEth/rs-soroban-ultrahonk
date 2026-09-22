@@ -1,5 +1,11 @@
 Tornado Classic–style Mixer (Soroban + Noir)
 
+> **Demo only — the supported proof flavor is non-ZK.** This verifier implements
+> Barretenberg's `UltraKeccakFlavor`, which provides **no witness-hiding guarantee**.
+> A mixer's privacy depends on exactly that property, so this example must not be
+> deployed with value. The `nullifier`, `secret` and Merkle path are private inputs
+> to the circuit, not confidential values.
+
 Scope
 - Deposit stores commitments and rolls an on-chain Poseidon2 Merkle tree (depth 20).
 - Withdraw verifies a Noir UltraHonk proof against the stored root and enforces single-use nullifiers.
@@ -15,7 +21,7 @@ Requirements
 - Rust stable toolchain (`cargo`)
 - Optional Stellar CLI (`stellar-cli`) + Docker if you want to deploy the verifier contract locally
 
-Generate ZK Artifacts
+Generate Proof Artifacts
 ```bash
 cd tornado_classic/circuit
 scripts/gen_artifacts.sh   # produces target/{vk,proof,public_inputs,…}

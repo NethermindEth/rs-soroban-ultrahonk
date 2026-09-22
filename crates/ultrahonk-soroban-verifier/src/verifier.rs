@@ -4,7 +4,7 @@
 //! `oink_verifier.cpp`, and `decider_verifier.cpp`.  The Rust code inlines the
 //! Oink and Decider steps into a single `verify` method.
 //!
-//! BB reference (v0.82.2):
+//! BB reference (v0.87.0):
 //!   - `ultra_honk/ultra_verifier.cpp::UltraVerifier_::verify_proof`
 //!   - `ultra_honk/oink_verifier.cpp::OinkVerifier::verify`
 //!   - `ultra_honk/decider_verifier.cpp::DeciderVerifier_::verify`
@@ -15,7 +15,9 @@ use crate::{
     sumcheck::verify_sumcheck,
     transcript::generate_transcript,
     types::PAIRING_POINTS_SIZE,
-    utils::{load_proof, load_vk_from_bytes},
+    utils::{
+        load_proof, load_vk_from_bytes, validate_gemini_padding, validate_public_inputs_canonical,
+    },
 };
 use soroban_sdk::{Bytes, Env};
 
@@ -31,6 +33,13 @@ pub enum VkLoadError {
     WrongLength,
     /// Header parsed successfully but contains out-of-range values.
     InvalidParameters,
+    /// A verification-key G1 commitment was malformed: either a coordinate at or
+    /// above the base field modulus, or a point that is not on the BN254 curve.
+    ///
+    /// Note there is no limb-canonicality case here, unlike the proof path: the VK
+    /// stores each point as a plain 64-byte `x || y`, so there are no limbs to
+    /// decode and `PointError::NonCanonicalLimb` is unreachable from this path.
+    InvalidPoint,
 }
 
 /// Error type describing the specific reason verification failed.
@@ -47,7 +56,14 @@ pub struct UltraHonkVerifier {
 }
 
 impl UltraHonkVerifier {
-    pub fn new_with_vk(env: &Env, vk: crate::types::VerificationKey) -> Self {
+    /// Build a verifier from an already-parsed key.
+    ///
+    /// Crate-internal: a `VerificationKey` can only be obtained from
+    /// [`load_vk_from_bytes`], which validates every commitment, so this cannot be
+    /// reached with an unvalidated key. Exposing it would reintroduce that path,
+    /// since the struct's fields are public. Use [`Self::new`] instead, which parses
+    /// and validates the key bytes.
+    pub(crate) fn new_with_vk(env: &Env, vk: crate::types::VerificationKey) -> Self {
         Self {
             env: env.clone(),
             vk,
@@ -65,28 +81,43 @@ impl UltraHonkVerifier {
 
     /// Verify an UltraHonk proof against the loaded VK.
     ///
-    /// Steps (matching BB verifier flow):
-    /// 1. Parse proof bytes.
-    /// 2. Validate public-input length against VK metadata.
-    /// 3. Generate Fiat–Shamir challenges (Oink rounds).
-    /// 4. Compute `public_inputs_delta` (grand-product permutation argument).
-    /// 5. Run sumcheck verification.
-    /// 6. Run Shplemini batch-opening (Gemini + Shplonk + KZG pairing check).
+    /// Steps (matching BB verifier flow). The numbers match the `// n)` labels in
+    /// the body, so a step traced by number lands on the block that performs it:
+    /// 1. Parse proof bytes (canonical G1 limbs, coordinates and scalars enforced
+    ///    at parse time; see VERIFIER_PROVENANCE.md §4.3).
+    /// 2. Reject non-zero padding in the unused Gemini evaluation slots.
+    /// 3. Validate the public inputs: 32-byte alignment, canonical encodings, and
+    ///    count against VK metadata.
+    /// 4. Generate Fiat–Shamir challenges (Oink rounds).
+    /// 5. Compute `public_inputs_delta` (grand-product permutation argument).
+    /// 6. Run sumcheck verification.
+    /// 7. Run Shplemini batch-opening (Gemini + Shplonk + KZG pairing check).
     ///
     /// BB: `ultra_verifier.cpp::UltraVerifier_::verify_proof`
+    /// Note: this takes no `Env` parameter. The verifier's stored handle is used
+    /// throughout, which makes a cross-`Env` mismatch unrepresentable rather than
+    /// merely unlikely.
     pub fn verify(
         &self,
-        env: &Env,
         proof_bytes: &Bytes,
         public_inputs_bytes: &Bytes,
     ) -> Result<(), VerifyError> {
+        let env = &self.env;
         // 1) parse proof
         let proof = load_proof(env, proof_bytes).map_err(|_| VerifyError::InvalidInput)?;
 
-        // 2) sanity on public inputs (length and VK metadata if present)
+        // 2) reject non-canonical padding in the unused Gemini evaluation slots.
+        // Done here rather than in `load_proof` because it needs log_circuit_size,
+        // which comes from the VK. Runs before transcript generation.
+        validate_gemini_padding(&proof, self.vk.log_circuit_size as usize)
+            .map_err(|_| VerifyError::InvalidInput)?;
+
+        // 3) validate public inputs (alignment, canonical encodings, count vs VK)
         if !public_inputs_bytes.len().is_multiple_of(32) {
             return Err(VerifyError::InvalidInput);
         }
+        validate_public_inputs_canonical(public_inputs_bytes)
+            .map_err(|_| VerifyError::InvalidInput)?;
         let provided = (public_inputs_bytes.len() / 32) as u64;
         let expected = self
             .vk
@@ -97,11 +128,11 @@ impl UltraHonkVerifier {
             return Err(VerifyError::InvalidInput);
         }
 
-        // 3) Fiat–Shamir transcript
+        // 4) Fiat–Shamir transcript
         let pis_total = provided + PAIRING_POINTS_SIZE as u64;
         let pub_inputs_offset = self.vk.pub_inputs_offset;
         let mut t = generate_transcript(
-            &self.env,
+            env,
             &proof,
             public_inputs_bytes,
             self.vk.circuit_size,
@@ -110,7 +141,7 @@ impl UltraHonkVerifier {
         )
         .map_err(|_| VerifyError::InvalidInput)?;
 
-        // 4) Public delta
+        // 5) Public delta
         t.rel_params.public_inputs_delta = Self::compute_public_input_delta(
             env,
             public_inputs_bytes,
@@ -122,12 +153,11 @@ impl UltraHonkVerifier {
         )
         .map_err(|_| VerifyError::InvalidInput)?;
 
-        // 5) Sum-check
+        // 6) Sum-check
         verify_sumcheck(env, &proof, &t, &self.vk).map_err(|_| VerifyError::SumcheckFailed)?;
 
-        // 6) Shplonk
-        verify_shplemini(&self.env, &proof, &self.vk, &t)
-            .map_err(|_| VerifyError::ShplonkFailed)?;
+        // 7) Shplemini (Gemini + Shplonk + KZG)
+        verify_shplemini(env, &proof, &self.vk, &t).map_err(|_| VerifyError::ShplonkFailed)?;
 
         Ok(())
     }

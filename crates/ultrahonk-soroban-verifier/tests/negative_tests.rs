@@ -5,7 +5,7 @@
 //! the tampered input.
 
 use soroban_sdk::{testutils::Ledger, Bytes, Env};
-use ultrahonk_soroban_verifier::{UltraHonkVerifier, VkLoadError};
+use ultrahonk_soroban_verifier::{UltraHonkVerifier, VerifyError, VkLoadError};
 use ultrahonk_test_utils::{mutate_byte, truncate, Fixture};
 
 // ---------------------------------------------------------------------------
@@ -35,7 +35,7 @@ fn mutated_proof_simple_circuit_fails() {
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
     assert!(
-        v.verify(&env, &proof, &pi).is_err(),
+        v.verify(&proof, &pi).is_err(),
         "mutated proof must not verify (simple_circuit)"
     );
 }
@@ -51,7 +51,7 @@ fn mutated_proof_fib_chain_fails() {
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
     assert!(
-        v.verify(&env, &proof, &pi).is_err(),
+        v.verify(&proof, &pi).is_err(),
         "mutated proof must not verify (fib_chain)"
     );
 }
@@ -75,7 +75,7 @@ fn mutated_vk_simple_circuit_fails() {
             Err(_) => (), // VK parse rejected — good
             Ok(v) => {
                 assert!(
-                    v.verify(&env, &proof, &pi).is_err(),
+                    v.verify(&proof, &pi).is_err(),
                     "mutated VK must not verify (simple_circuit)"
                 );
             }
@@ -110,7 +110,7 @@ fn mutated_vk_fib_chain_fails() {
             Err(_) => (),
             Ok(v) => {
                 assert!(
-                    v.verify(&env, &proof, &pi).is_err(),
+                    v.verify(&proof, &pi).is_err(),
                     "mutated VK must not verify (fib_chain)"
                 );
             }
@@ -145,7 +145,7 @@ fn mutated_public_inputs_simple_circuit_fails() {
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
     assert!(
-        v.verify(&env, &proof, &pi).is_err(),
+        v.verify(&proof, &pi).is_err(),
         "mutated public inputs must not verify (simple_circuit)"
     );
 }
@@ -161,7 +161,7 @@ fn mutated_public_inputs_fib_chain_fails() {
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
     assert!(
-        v.verify(&env, &proof, &pi).is_err(),
+        v.verify(&proof, &pi).is_err(),
         "mutated public inputs must not verify (fib_chain)"
     );
 }
@@ -181,7 +181,7 @@ fn truncated_proof_simple_circuit_fails() {
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
     assert!(
-        v.verify(&env, &proof, &pi).is_err(),
+        v.verify(&proof, &pi).is_err(),
         "truncated proof must not verify (simple_circuit)"
     );
 }
@@ -197,7 +197,7 @@ fn truncated_proof_fib_chain_fails() {
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
     assert!(
-        v.verify(&env, &proof, &pi).is_err(),
+        v.verify(&proof, &pi).is_err(),
         "truncated proof must not verify (fib_chain)"
     );
 }
@@ -216,7 +216,7 @@ fn empty_proof_simple_circuit_fails() {
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
     assert!(
-        v.verify(&env, &proof, &pi).is_err(),
+        v.verify(&proof, &pi).is_err(),
         "empty proof must not verify (simple_circuit)"
     );
 }
@@ -231,7 +231,7 @@ fn empty_proof_fib_chain_fails() {
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
     assert!(
-        v.verify(&env, &proof, &pi).is_err(),
+        v.verify(&proof, &pi).is_err(),
         "empty proof must not verify (fib_chain)"
     );
 }
@@ -337,7 +337,7 @@ fn happy_path_small_circuit() {
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
     assert!(
-        v.verify(&env, &proof, &pi).is_ok(),
+        v.verify(&proof, &pi).is_ok(),
         "happy path must verify (small_circuit)"
     );
 }
@@ -353,7 +353,7 @@ fn mutated_proof_small_circuit_fails() {
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
     assert!(
-        v.verify(&env, &proof, &pi).is_err(),
+        v.verify(&proof, &pi).is_err(),
         "mutated proof must not verify (small_circuit)"
     );
 }
@@ -368,7 +368,7 @@ fn happy_path_lookup_heavy() {
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
     assert!(
-        v.verify(&env, &proof, &pi).is_ok(),
+        v.verify(&proof, &pi).is_ok(),
         "happy path must verify (lookup_heavy)"
     );
 }
@@ -384,7 +384,7 @@ fn mutated_proof_lookup_heavy_fails() {
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
     assert!(
-        v.verify(&env, &proof, &pi).is_err(),
+        v.verify(&proof, &pi).is_err(),
         "mutated proof must not verify (lookup_heavy)"
     );
 }
@@ -399,7 +399,7 @@ fn happy_path_range_heavy() {
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
     assert!(
-        v.verify(&env, &proof, &pi).is_ok(),
+        v.verify(&proof, &pi).is_ok(),
         "happy path must verify (range_heavy)"
     );
 }
@@ -415,7 +415,7 @@ fn mutated_proof_range_heavy_fails() {
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
     assert!(
-        v.verify(&env, &proof, &pi).is_err(),
+        v.verify(&proof, &pi).is_err(),
         "mutated proof must not verify (range_heavy)"
     );
 }
@@ -430,7 +430,7 @@ fn happy_path_many_pubs() {
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
     assert!(
-        v.verify(&env, &proof, &pi).is_ok(),
+        v.verify(&proof, &pi).is_ok(),
         "happy path must verify (many_pubs)"
     );
 }
@@ -446,7 +446,7 @@ fn mutated_proof_many_pubs_fails() {
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
     assert!(
-        v.verify(&env, &proof, &pi).is_err(),
+        v.verify(&proof, &pi).is_err(),
         "mutated proof must not verify (many_pubs)"
     );
 }
@@ -467,7 +467,7 @@ fn public_inputs_not_32_byte_aligned_fails() {
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
     assert!(
-        v.verify(&env, &proof, &pi).is_err(),
+        v.verify(&proof, &pi).is_err(),
         "non-32-byte-aligned public inputs must fail"
     );
 }
@@ -485,7 +485,7 @@ fn wrong_number_of_public_inputs_fails() {
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
     assert!(
-        v.verify(&env, &proof, &pi).is_err(),
+        v.verify(&proof, &pi).is_err(),
         "wrong number of public inputs must fail"
     );
 }
@@ -500,7 +500,7 @@ fn empty_public_inputs_when_expected_nonzero_fails() {
 
     let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
     assert!(
-        v.verify(&env, &proof, &pi).is_err(),
+        v.verify(&proof, &pi).is_err(),
         "empty public inputs when circuit expects nonzero must fail"
     );
 }
@@ -562,7 +562,7 @@ fn cross_circuit_proof_and_vk_fails() {
         let vk = Bytes::from_slice(&env, &f_b.vk);
         let pi = Bytes::from_slice(&env, &f_a.public_inputs);
         let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
-        v.verify(&env, &proof, &pi)
+        v.verify(&proof, &pi)
     });
     // If it panics (e.g. "point not on curve"), that's also a rejection — pass.
     if let Err(panic) = result {
@@ -582,4 +582,252 @@ fn cross_circuit_proof_and_vk_fails() {
             "cross-circuit proof+VK must not verify"
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// Audit remediation tests: L-01, L-02, L-04.
+//
+// Each mutates a real fixture proof at a position the verifier previously
+// accepted, and asserts it is now rejected with a defined error rather than
+// verifying identically or trapping in the host.
+// ---------------------------------------------------------------------------
+
+/// Offset of the first proof G1 point: it follows the 16-word pairing point object.
+const FIRST_G1: usize = 16 * 32;
+
+fn remediation_case(mutate: impl Fn(&mut [u8])) -> bool {
+    let env = test_env();
+    let f = Fixture::load("simple_circuit");
+    let mut bytes = f.proof.clone();
+    mutate(&mut bytes);
+    assert_ne!(bytes, f.proof, "mutation must actually change the proof");
+    let proof = Bytes::from_slice(&env, &bytes);
+    let vk = Bytes::from_slice(&env, &f.vk);
+    let pi = Bytes::from_slice(&env, &f.public_inputs);
+    let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
+    // Must be rejected during parsing (InvalidInput), not merely fail later at
+    // sumcheck or the pairing check. A generic `is_err()` would pass even if the
+    // mutation had simply broken the proof, which would not prove the fix works.
+    matches!(v.verify(&proof, &pi), Err(VerifyError::InvalidInput))
+}
+
+/// L-01: a non-zero byte in the discarded high padding of a G1 limb. Barretenberg
+/// rejects these because it uses every bit of both limbs; before the fix this
+/// verifier discarded them, so the mutated bytes verified identically.
+#[test]
+fn rejects_non_canonical_g1_limb_padding() {
+    assert!(
+        remediation_case(|b| b[FIRST_G1] = 0x01),
+        "non-canonical limb padding must be rejected"
+    );
+}
+
+/// L-01: a high limb at or above 2^118 is rejected.
+///
+/// Note on what this does and does not isolate. Removing `limbs_are_canonical`
+/// does NOT make this test fail: setting bit 118 makes the reconstructed
+/// coordinate at least 2^254, which exceeds the base modulus, so the L-04
+/// coordinate range check rejects it instead. The two guards overlap here by
+/// construction — any high limb at or above 2^118 yields an out-of-range
+/// coordinate.
+///
+/// The 2^118 bound is still worth enforcing at the limb level: it rejects on the
+/// audit's stated criterion (canonical limb encodings) with a specific reason,
+/// rather than incidentally via field validity, and it keeps the limb rule
+/// complete rather than relying on a downstream check to cover half of it. The
+/// low-limb half of `limbs_are_canonical` is not covered by any other guard —
+/// see `rejects_non_canonical_g1_limb_padding`, which does fail when that
+/// function is neutered.
+#[test]
+fn rejects_high_limb_above_2_118() {
+    assert!(
+        remediation_case(|b| b[FIRST_G1 + 32 + 17] |= 0x40),
+        "high limb at or above 2^118 must be rejected"
+    );
+}
+
+/// L-02: `v + k*r` reduces to the same scalar, so before the fix a valid proof
+/// had many distinct byte encodings that all verified.
+#[test]
+fn rejects_non_canonical_scalar_encoding() {
+    const R: [u8; 32] = [
+        0x30, 0x64, 0x4e, 0x72, 0xe1, 0x31, 0xa0, 0x29, 0xb8, 0x50, 0x45, 0xb6, 0x81, 0x81, 0x58,
+        0x5d, 0x28, 0x33, 0xe8, 0x48, 0x79, 0xb9, 0x70, 0x91, 0x43, 0xe1, 0xf5, 0x93, 0xf0, 0x00,
+        0x00, 0x01,
+    ];
+    assert!(
+        remediation_case(|b| {
+            let mut carry = 0u16;
+            for i in (0..32).rev() {
+                let s = b[i] as u16 + R[i] as u16 + carry;
+                b[i] = (s & 0xff) as u8;
+                carry = s >> 8;
+            }
+        }),
+        "non-canonical scalar encoding must be rejected"
+    );
+}
+
+/// L-04: a coordinate at or above the base modulus. This is the case that forces
+/// the guest-side range check to run *before* any host curve call: the host's
+/// `g1_is_on_curve` errors rather than returning false here, so a fix that called
+/// it first would reproduce the very trap being removed.
+#[test]
+fn rejects_g1_coordinate_out_of_range() {
+    assert!(
+        remediation_case(|b| {
+            for i in 15..32 {
+                b[FIRST_G1 + i] = 0xff;
+            }
+            b[FIRST_G1 + 32 + 17] = 0x3f;
+            for i in 18..32 {
+                b[FIRST_G1 + 32 + i] = 0xff;
+            }
+        }),
+        "out-of-range G1 coordinate must be rejected, not trapped"
+    );
+}
+
+/// L-04: a coordinate pair that is in range but off the curve.
+#[test]
+fn rejects_off_curve_g1_point() {
+    assert!(
+        remediation_case(|b| b[FIRST_G1 + 64 + 31] ^= 0x01),
+        "off-curve G1 point must be rejected"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// L-04, verification-key path.
+//
+// The proof-path tests above cover 37 of the 64 G1 points. These cover the other
+// 27. They deliberately assert a specific `Err(VkLoadError::InvalidPoint)` and do
+// NOT accept a panic: the older `mutated_vk_*` tests in this file wrap parsing in
+// `catch_unwind` and count a host trap as a rejection, so they would still pass if
+// this fix regressed to the trapping behaviour L-04 exists to remove.
+// ---------------------------------------------------------------------------
+
+/// Offset of the first VK G1 commitment: it follows the four u64 header words.
+const VK_FIRST_POINT: usize = 4 * 8;
+
+fn vk_case(mutate: impl Fn(&mut [u8])) -> Option<VkLoadError> {
+    let env = test_env();
+    let f = Fixture::load("simple_circuit");
+    let mut bytes = f.vk.clone();
+    mutate(&mut bytes);
+    assert_ne!(bytes, f.vk, "mutation must actually change the VK");
+    UltraHonkVerifier::new(&env, &Bytes::from_slice(&env, &bytes)).err()
+}
+
+/// A VK coordinate at or above the base modulus must be rejected with a defined
+/// error. This is the case that requires the guest-side range check to precede any
+/// host curve call, since `g1_is_on_curve` errors rather than returning false here.
+#[test]
+fn vk_rejects_coordinate_out_of_range() {
+    let err = vk_case(|b| {
+        for i in 0..32 {
+            b[VK_FIRST_POINT + i] = 0xff;
+        }
+    })
+    .expect("out-of-range VK coordinate must be rejected");
+    assert_eq!(err, VkLoadError::InvalidPoint);
+}
+
+/// A VK point whose coordinates are valid field elements but which is not on the
+/// curve must also be rejected, and as a parse error rather than a host trap.
+#[test]
+fn vk_rejects_off_curve_point() {
+    let err =
+        vk_case(|b| b[VK_FIRST_POINT + 63] ^= 0x01).expect("off-curve VK point must be rejected");
+    assert_eq!(err, VkLoadError::InvalidPoint);
+}
+
+// ---------------------------------------------------------------------------
+// N-05 (narrow): padded Gemini evaluation slots must be zero.
+//
+// This is the one padded surface where the verifier diverged from Barretenberg:
+// bb binds these through its Shplonk constant-term accumulator and rejects
+// non-zero values, while this verifier previously ignored evaluations beyond
+// log_n. Rejecting at parse time reaches bb's accept/reject outcome.
+// ---------------------------------------------------------------------------
+
+/// Byte offset of `gemini_a_evaluations[i]` within the proof: 16 pairing-point
+/// words, 8 head G1 points, 28x8 sumcheck univariates, 40 sumcheck evaluations,
+/// then 27 fold commitments.
+fn gemini_eval_offset(i: usize) -> usize {
+    16 * 32 + 8 * 128 + 28 * 8 * 32 + 40 * 32 + 27 * 128 + i * 32
+}
+
+/// A non-zero value in an unused Gemini evaluation slot must be rejected.
+/// simple_circuit has log_n = 12, so slots 12..28 are padding.
+#[test]
+fn rejects_non_zero_padded_gemini_evaluation() {
+    assert!(
+        remediation_case(|b| {
+            // Slot 27 is the last, comfortably inside the padded range for log_n = 12.
+            let off = gemini_eval_offset(27);
+            b[off + 31] = 0x01;
+        }),
+        "non-zero padding in an unused Gemini evaluation slot must be rejected"
+    );
+}
+
+/// The check must not reject honest proofs: the *used* slots carry non-zero
+/// values, so a rule that rejected any non-zero evaluation would break every
+/// valid proof. This pins that the boundary is at log_n, not at zero.
+#[test]
+fn accepts_non_zero_used_gemini_evaluation() {
+    let env = test_env();
+    let f = Fixture::load("simple_circuit");
+    let proof = Bytes::from_slice(&env, &f.proof);
+    let vk = Bytes::from_slice(&env, &f.vk);
+    let pi = Bytes::from_slice(&env, &f.public_inputs);
+    let v = UltraHonkVerifier::new(&env, &vk).expect("VK should parse");
+    assert!(
+        v.verify(&proof, &pi).is_ok(),
+        "unmodified proof must still verify after the padding check"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Public-input canonicality.
+//
+// Not a malleability fix: the transcript absorbs the raw public-input bytes, so
+// `v` and `v + r` already yield different challenges and fail closed. This pins
+// the invariant that the transcript path and the public-input-delta path see the
+// same value, so a later change to transcript absorption cannot reintroduce the
+// L-02 malleability on this surface.
+// ---------------------------------------------------------------------------
+
+/// BN254 scalar field order, big-endian.
+const R_BE: [u8; 32] = [
+    0x30, 0x64, 0x4e, 0x72, 0xe1, 0x31, 0xa0, 0x29, 0xb8, 0x50, 0x45, 0xb6, 0x81, 0x81, 0x58, 0x5d,
+    0x28, 0x33, 0xe8, 0x48, 0x79, 0xb9, 0x70, 0x91, 0x43, 0xe1, 0xf5, 0x93, 0xf0, 0x00, 0x00, 0x01,
+];
+
+#[test]
+fn rejects_non_canonical_public_input() {
+    let env = test_env();
+    let f = Fixture::load("simple_circuit");
+    let mut pi = f.public_inputs.clone();
+    // pi[0] += r, which reduces to the same field element.
+    let mut carry = 0u16;
+    for i in (0..32).rev() {
+        let s = pi[i] as u16 + R_BE[i] as u16 + carry;
+        pi[i] = (s & 0xff) as u8;
+        carry = s >> 8;
+    }
+    assert_ne!(pi, f.public_inputs, "mutation must change the bytes");
+
+    let v = UltraHonkVerifier::new(&env, &Bytes::from_slice(&env, &f.vk)).expect("VK parses");
+    let got = v.verify(
+        &Bytes::from_slice(&env, &f.proof),
+        &Bytes::from_slice(&env, &pi),
+    );
+    // InvalidInput specifically: rejected up front, not merely failing later
+    // because the raw bytes perturbed the transcript.
+    assert!(
+        matches!(got, Err(VerifyError::InvalidInput)),
+        "non-canonical public input must be rejected as InvalidInput, got {got:?}"
+    );
 }

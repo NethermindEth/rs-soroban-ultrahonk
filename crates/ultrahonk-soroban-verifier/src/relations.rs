@@ -2,9 +2,15 @@
 //!
 //! Evaluates all 26 subrelations across 8 relation families at the purported
 //! evaluation point, then batches them with independent alpha challenges.
-//! Every formula was verified line-by-line against Barretenberg v0.82.2.
+//! Every formula was verified line-by-line against Barretenberg v0.82.2 during
+//! the 2026-05-28 internal review, and re-verified against the declared target
+//! v0.87.0 on 2026-09-04 — all 26 subrelations, their ordering, their alpha
+//! assignment, the single `SUBRELATION_LINEARLY_INDEPENDENT = false` flag, and
+//! the Poseidon2 internal-matrix diagonal, with no divergence. The relation
+//! algebra is unchanged between the two versions. See VERIFIER_PROVENANCE.md
+//! §4.2.
 //!
-//! BB reference (v0.82.2):
+//! BB reference (v0.87.0):
 //!   - `relations/ultra_arithmetic_relation.hpp`
 //!   - `relations/permutation_relation.hpp`
 //!   - `relations/logderiv_lookup_relation.hpp`
@@ -140,6 +146,23 @@ fn accumulate_log_derivative_lookup_relation(
         + derived_entry_3 * &rp.eta_two
         + &p[Wire::Qo] * &rp.eta_three;
 
+    // `lookup_read_tags` is intended to be boolean but is NOT independently
+    // constrained here, matching Barretenberg v0.87.0, which omitted the check.
+    // It is also not the same as `q_lookup`: a legitimate row may have
+    // `q_lookup = 0` and `lookup_read_tags = 1`.
+    //
+    // Not a soundness break for this relation: where `q_lookup = 1` the tag
+    // cancels (`t + 1 - t = 1`), so an actual lookup is unaffected; where
+    // `q_lookup = 0` a non-boolean tag only rescales that row's inverse, which is
+    // absorbed by rescaling `lookup_read_counts`, leaving `read_term` and
+    // `write_term` untouched. Since `write_term` is built from fixed
+    // verification-key table polynomials, this cannot create a denominator for a
+    // value outside the table.
+    //
+    // Barretenberg added the booleanity subrelation in PR #15007 (merged
+    // 2025-06-18). Adopting it changes the batched relation set and therefore
+    // requires matching prover support: move only when prover and verifier are
+    // upgraded together.
     let inv = &p[Wire::LookupInverses];
     let lookup_read_tags = &p[Wire::LookupReadTags];
     let q_lookup = &p[Wire::QLookup];
@@ -352,7 +375,7 @@ fn accumulate_auxiliary_relation(
     evals[12] = auxiliary_identity * q_aux * domain_sep;
 }
 
-/// Accumulate Poseidon external subrelations (indices 18..21).
+/// Accumulate Poseidon2 external-round subrelations (indices 18..21).
 ///
 /// BB: `relations/poseidon2_external_relation.hpp::Poseidon2ExternalRelation::accumulate`
 fn accumulate_poseidon_external_relation(p: &[Fr], evals: &mut [Fr], domain_sep: &Fr) {
@@ -397,7 +420,7 @@ fn accumulate_poseidon_external_relation(p: &[Fr], evals: &mut [Fr], domain_sep:
     evals[21] = (v4 - w4_shift) * q_poseidon_dom;
 }
 
-/// Accumulate Poseidon internal subrelations (indices 22..25).
+/// Accumulate Poseidon2 internal-round subrelations (indices 22..25).
 ///
 /// Uses the internal matrix diagonal constants from `field.rs::Fr::internal_matrix_diagonal`.
 ///
@@ -435,8 +458,11 @@ fn accumulate_poseidon_internal_relation(
 
 /// Batch all 26 subrelations with the independent alpha challenges.
 ///
-/// `UltraFlavor` is a folding flavor, so alphas are independent challenges
-/// (not powers of a single alpha).  Result:
+/// The 25 alphas are independent transcript challenges, not successive powers of
+/// a single α: `transcript.rs::generate_alpha_challenges` derives them through
+/// repeated duplex hashing and challenge splitting, matching BB's
+/// `generate_alphas_round`. Subrelation 0 is unscaled,
+/// so the batched value is
 ///   `evals[0]·1 + evals[1]·α₀ + … + evals[25]·α₂₄`
 ///
 /// BB: `relations/utils.hpp::RelationUtils::scale_and_batch_elements`

@@ -30,6 +30,9 @@ pub enum Error {
     VkNotSet = 5,
     /// Constructor has already been called; VK is immutable.
     AlreadyInitialized = 6,
+    /// A VK G1 commitment was malformed: a coordinate at or above the base field
+    /// modulus, or a point that is not on the BN254 curve.
+    VkInvalidPoint = 7,
 }
 
 #[contractimpl]
@@ -47,6 +50,7 @@ impl IdentityContract {
         let _ = UltraHonkVerifier::new(&env, &vk_bytes).map_err(|e| match e {
             VkLoadError::WrongLength => Error::VkInvalidLength,
             VkLoadError::InvalidParameters => Error::VkInvalidParameters,
+            VkLoadError::InvalidPoint => Error::VkInvalidPoint,
         })?;
         env.storage().instance().set(&Self::key_vk(), &vk_bytes);
         Ok(())
@@ -74,10 +78,11 @@ impl IdentityContract {
         let verifier = UltraHonkVerifier::new(&env, &vk_bytes).map_err(|e| match e {
             VkLoadError::WrongLength => Error::VkInvalidLength,
             VkLoadError::InvalidParameters => Error::VkInvalidParameters,
+            VkLoadError::InvalidPoint => Error::VkInvalidPoint,
         })?;
 
         verifier
-            .verify(&env, &proof_bytes, &public_inputs)
+            .verify(&proof_bytes, &public_inputs)
             .map_err(|_| Error::VerificationFailed)?;
 
         Ok(())

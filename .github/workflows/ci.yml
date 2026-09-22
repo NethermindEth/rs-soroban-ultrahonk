@@ -64,6 +64,9 @@ jobs:
       - name: Build all circuits
         run: ./circuits/scripts/build_all.sh
 
+      - name: Check circuit artifacts against known-good hashes
+        run: ./circuits/scripts/check_artifact_hashes.sh
+
       - name: Run workspace tests
         run: cargo test --workspace --verbose
 

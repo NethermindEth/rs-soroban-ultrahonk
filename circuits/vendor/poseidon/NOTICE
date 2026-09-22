@@ -1,0 +1,31 @@
+Vendored third-party dependency
+===============================
+
+  Library:  poseidon (Noir)
+  Upstream: https://github.com/noir-lang/poseidon
+  Tag:      v0.2.0
+  Commit:   4bc50d88dd8d94a00a95730fd76501e676417abf
+  License:  Apache License 2.0 (see LICENSE)
+
+Vendored verbatim at the commit above; no modifications to the source. Only the
+build/CI scaffolding of the upstream repository is omitted (workflows, package
+manifests, benchmark scripts, TypeScript oracle server), none of which is
+compiled by nargo.
+
+Why vendored
+------------
+The circuits previously depended on this library through a mutable Git tag
+(`tag = "v0.2.0"`). A tag can be moved to a different commit by the upstream
+maintainer, and nargo has no commit-`rev` key and writes no lockfile, so nothing
+recorded the resolved commit. A rebuild could therefore fetch different library
+source from unchanged repository source, producing a different ACIR and a
+different verification key. Vendoring by `path` is the only way to freeze the
+exact source in-manifest. See the OpenZeppelin audit finding N-06.
+
+Updating
+--------
+Do not edit these files in place. To move to a new upstream version, replace the
+directory wholesale from the new commit, update this NOTICE, regenerate the
+circuits that depend on it, and re-baseline their committed artifacts and the
+tests that use them. Changing this library changes the verification key of every
+circuit that imports it — currently `identity` and `tornado`.
