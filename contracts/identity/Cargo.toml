@@ -12,5 +12,5 @@ ultrahonk_soroban_verifier = { path = "../../crates/ultrahonk-soroban-verifier",
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils", "alloc"] }
-soroban-env-host = "27.0.1"
+soroban-env-host = "28.0.2"
 ultrahonk-test-utils = { path = "../../crates/test-utils" }

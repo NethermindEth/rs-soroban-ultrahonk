@@ -58,7 +58,7 @@ fn discarded_positions() -> Vec<usize> {
 #[test]
 fn discarded_limb_bytes_are_all_rejected() {
     let env = Env::default();
-    env.ledger().set_protocol_version(26);
+    env.ledger().set_protocol_version(28);
     env.cost_estimate().budget().reset_unlimited();
 
     let f = Fixture::load("simple_circuit");

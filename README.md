@@ -11,19 +11,19 @@ This repository is maintained under the NethermindEth organization. The project 
 Before you begin, ensure you have the following tools installed:
 
 ### 1. Rust and WASM target
-Install Rust 1.91.0 or newer using [rustup](https://rustup.rs/):
+Install Rust 1.92.0 or newer using [rustup](https://rustup.rs/):
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 rustup target add wasm32v1-none
 ```
 
 ### 2. Stellar CLI
-Install Stellar CLI 27.1.0 (also used in CI):
+Install Stellar CLI 28.0.0 (also used in CI):
 ```bash
-cargo install --locked stellar-cli@27.1.0
+cargo install --locked stellar-cli@28.0.0
 ```
 
-Contracts use Soroban SDK 27.0.6 and require a network running protocol 27 or newer.
+Contracts use Soroban SDK 28.0.0 and require a network running protocol 28 or newer.
 
 ### 3. Noir and Barretenberg
 This project uses **Noir `1.0.0-beta.9`** and **Barretenberg `0.87.0`**. Install them using their respective version managers:
