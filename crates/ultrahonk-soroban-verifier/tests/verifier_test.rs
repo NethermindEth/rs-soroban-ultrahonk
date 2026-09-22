@@ -5,7 +5,7 @@ use ultrahonk_soroban_verifier::UltraHonkVerifier;
 fn run(dir: &str) -> Result<(), String> {
     let path = Path::new(dir);
     let env = Env::default();
-    env.ledger().set_protocol_version(27);
+    env.ledger().set_protocol_version(28);
     env.cost_estimate().budget().reset_unlimited();
 
     // Proof bytes
