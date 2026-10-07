@@ -138,4 +138,10 @@ Maintainers should follow the repository's
 
 ## License
 
-MIT — see [LICENSE](https://github.com/NethermindEth/rs-soroban-ultrahonk/blob/main/crates/ultrahonk-soroban-verifier/LICENSE).
+Licensed under either
+[MIT](https://github.com/NethermindEth/rs-soroban-ultrahonk/blob/main/crates/ultrahonk-soroban-verifier/LICENSE-MIT)
+or [Apache License 2.0](https://github.com/NethermindEth/rs-soroban-ultrahonk/blob/main/crates/ultrahonk-soroban-verifier/LICENSE-APACHE),
+at your option (`MIT OR Apache-2.0`). Both license texts are included in the
+crate archive. Retain the existing copyright notices in `LICENSE-MIT` when
+redistributing the code. Dependencies retain their own licenses and notice
+requirements.

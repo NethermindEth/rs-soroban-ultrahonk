@@ -10,6 +10,22 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  deny:
+    name: Dependency policy (cargo-deny)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-deny
+        run: cargo install cargo-deny --version 0.20.2 --locked
+
+      - name: Check advisories, licenses, bans, and sources
+        run: cargo deny --locked --all-features check
+
   msrv:
     name: Minimum supported Rust (1.92.0)
     runs-on: ubuntu-latest

@@ -1,0 +1,64 @@
+# Run with cargo-deny 0.20.2:
+# cargo deny --locked --all-features check
+
+[advisories]
+# Remove this exception when Soroban's dependency chain replaces paste.
+# https://rustsec.org/advisories/RUSTSEC-2024-0436.html
+ignore = [
+    { id = "RUSTSEC-2024-0436", reason = "Transitive Soroban SDK dependency; awaiting upstream replacement of unmaintained paste." },
+]
+
+[licenses]
+allow = ["MIT", "Apache-2.0"]
+include-dev = true
+include-build = true
+
+# BSD-3-Clause permits redistribution with the copyright, conditions, and
+# disclaimer retained; binary distributions must reproduce these notices.
+# Its non-endorsement condition also applies. Keep approvals version-specific
+# so dependency upgrades trigger a license review.
+[[licenses.exceptions]]
+name = "curve25519-dalek"
+version = "=4.1.3"
+allow = ["BSD-3-Clause"]
+
+[[licenses.exceptions]]
+name = "ed25519-dalek"
+version = "=2.2.0"
+allow = ["BSD-3-Clause"]
+
+[[licenses.exceptions]]
+name = "subtle"
+version = "=2.6.1"
+allow = ["BSD-3-Clause"]
+
+# The LLVM exception grants additional permissions on top of Apache-2.0;
+# cargo-deny treats the combined SPDX identifier as a distinct license.
+[[licenses.exceptions]]
+name = "wasmparser"
+version = "=0.116.1"
+allow = ["Apache-2.0 WITH LLVM-exception"]
+
+[[licenses.exceptions]]
+name = "wasmparser-nostd"
+version = "=0.100.2"
+allow = ["Apache-2.0 WITH LLVM-exception"]
+
+# unicode-ident requires (MIT OR Apache-2.0) AND Unicode-3.0. The Unicode
+# data's copyright and permission notice must accompany redistributed data
+# or appear in its associated documentation; the MIT/Apache choice alone
+# does not satisfy this additional requirement.
+[[licenses.exceptions]]
+name = "unicode-ident"
+version = "=1.0.24"
+allow = ["Unicode-3.0"]
+
+[licenses.private]
+ignore = false
+
+[bans]
+multiple-versions = "warn"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

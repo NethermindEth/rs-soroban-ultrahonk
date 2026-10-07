@@ -31,7 +31,7 @@ do not upload a crate. Only the command in **Publish** uploads it.
 
   Keep the token out of the repository and command history. The preparation
   commands do not require you to share it.
-- Review the MIT license and retained copyright notices, README, repository URL,
+- Review both license texts and retained copyright notices, README, repository URL,
   feature descriptions, and explicit non-ZK proof-flavor limitations.
 
 ## 2. Run release checks
@@ -49,6 +49,7 @@ feature configurations and documentation without publishing.
 ```bash
 rustup target add wasm32v1-none
 cargo fmt --all -- --check
+cargo deny --locked --all-features check licenses
 ./circuits/scripts/build_all.sh
 ./circuits/scripts/check_artifact_hashes.sh
 cargo test -p ultrahonk_soroban_verifier --locked
@@ -91,11 +92,22 @@ tar -xOf target/package/ultrahonk_soroban_verifier-0.1.0.crate \
   ultrahonk_soroban_verifier-0.1.0/Cargo.toml
 ```
 
-Confirm the archive includes the source, README, MIT license, and verifier
+Confirm the archive includes the source, README, `LICENSE-MIT`, `LICENSE-APACHE`, and verifier
 provenance file, and contains no generated proofs, credentials, build output,
 or unrelated contracts. Check that the normalized manifest has a crates.io
 version for `soroban-sdk` and no dependency on the private test helper. Its
 compressed size must fit crates.io's default 10 MiB limit.
+
+The workspace uses `MIT OR Apache-2.0`. Install cargo-deny 0.20.2 with
+`cargo install cargo-deny --version 0.20.2 --locked` for the license check.
+`deny.toml` allows MIT and Apache-2.0 generally and has version-specific
+exceptions for BSD-3-Clause, Apache-2.0 WITH LLVM-exception, and Unicode-3.0.
+Review those exceptions when updating dependencies. They permit use of the
+dependencies under their original terms; they do not relicense them. When
+distributing compiled artifacts or bundled dependency sources, retain the
+applicable third-party license texts, copyright notices, and NOTICE files.
+Run `cargo deny --locked --all-features check` for advisories, bans, and sources
+as well; a successful license check alone does not clear advisory findings.
 
 Both dry runs must succeed. They validate local packaging and compilation;
 the registry still checks account permissions and release availability at

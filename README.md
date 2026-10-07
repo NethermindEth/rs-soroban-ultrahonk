@@ -195,4 +195,7 @@ utilities are private workspace packages.
 
 ## License
 
-MIT
+Licensed under either [MIT](LICENSE-MIT) or [Apache License 2.0](LICENSE-APACHE),
+at your option (`MIT OR Apache-2.0`). Existing copyright notices are retained
+in the MIT license files. Third-party dependencies and vendored code retain
+their own licenses and notice requirements.
