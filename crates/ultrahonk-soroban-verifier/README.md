@@ -12,79 +12,130 @@
 > submitter and provides no replay protection; see the contract READMEs.
 >
 > **Proof bytes are not a unique identifier.** Canonical encodings are now enforced
-> at parse time (see `VERIFIER_PROVENANCE.md` §4.3), but an active prover can still
+> at parse time (see [verifier provenance](https://github.com/NethermindEth/rs-soroban-ultrahonk/blob/main/crates/ultrahonk-soroban-verifier/VERIFIER_PROVENANCE.md) §4.3), but an active prover can still
 > vary the fixed-slot padding, so distinct byte strings can verify for one statement.
 > Do not key deduplication, replay protection or nullifiers on raw proof bytes.
 
-Rust verifier library for proofs generated from Noir (UltraHonk) on BN254, designed to integrate with Soroban contracts and `soroban-sdk`. Its purpose is to verify Noir/UltraHonk proofs produced by Nargo 1.0.0-beta.9 + barretenberg (bb v0.87.0). A small Noir asset is included only for testing the verifier.
+Rust verifier library for Noir/UltraHonk proofs on BN254, built for Soroban
+contracts using `soroban-sdk` 28.x. Compatible proof tooling is **Nargo
+1.0.0-beta.9 + Barretenberg 0.87.0**, using the Keccak oracle. Contracts built
+with this SDK require Stellar protocol **28 or newer**.
 
----
+## Installation
 
-## Features
-- Soroban-focused verifier built on `soroban-sdk`  
-- Verifies proofs generated from Noir (UltraHonk) using Nargo 1.0.0-beta.9 / barretenberg v0.87.0  
-- Pure Rust core; `no_std` + `alloc` friendly  
-- Expects `bb write_vk`
-- Example verification artifacts under `circuits/simple_circuit/target` (for tests).
-  Note these are **not** tracked in git (`target` is gitignored); they are produced
-  by `just build-circuits` and must be regenerated after a clean checkout.
+For applications consuming the published 0.1.0 release:
 
----
-
-## Quick Start
-```bash
-cargo test --features "std"
-
-cargo test
+```toml
+[dependencies]
+ultrahonk_soroban_verifier = "0.1.0"
+soroban-sdk = { version = "28.0.0", default-features = false }
 ```
 
-## How It Works
-- Typical pipeline: Noir circuit → Nargo prove → bb emits `proof`, `public_inputs`, and `vk` → this library verifies the proof.
-- Test data lives at `circuits/simple_circuit/target` and includes the following.
-  It is **not** tracked in git and must be regenerated with `just build-circuits`:
-  - `proof`
-  - `public_inputs`
-  - `vk`
+The verifier is a library, not a prover or circuit compiler. Nargo and
+Barretenberg are needed to generate proofs; they are not needed to compile a
+Rust application that depends on this crate.
 
----
+## Usage in a Soroban contract
 
-## Crate Usage
-
-Add the dependency from a git path or local path. The crate exposes a small API:
+Pass the contract's `Env` and binary inputs to the verifier. This helper maps
+errors to strings for illustration; a contract should map them to its own
+`#[contracterror]` enum.
 
 ```rust
 use soroban_sdk::{Bytes, Env};
 use ultrahonk_soroban_verifier::UltraHonkVerifier;
 
-let env = Env::default();
-let vk_bytes = std::fs::read("vk").unwrap();
-let vk = Bytes::from_slice(&env, &vk_bytes);
-let verifier = UltraHonkVerifier::new(&env, &vk).map_err(|e| format!("vk load failed: {e:?}"))?;
-let proof_bytes = std::fs::read("proof").unwrap();
-let public_inputs_bytes = std::fs::read("public_inputs").unwrap();
-let proof = Bytes::from_slice(&env, &proof_bytes);
-let public_inputs = Bytes::from_slice(&env, &public_inputs_bytes);
-
-verifier.verify(&proof, &public_inputs).unwrap();
+fn verify(
+    env: &Env,
+    vk: &Bytes,
+    proof: &Bytes,
+    public_inputs: &Bytes,
+) -> Result<(), &'static str> {
+    let verifier = UltraHonkVerifier::new(env, vk)
+        .map_err(|_| "invalid verification key")?;
+    verifier.verify(proof, public_inputs)
+        .map_err(|_| "invalid proof")
+}
 ```
 
-Notes:
-- Library scope: verification only (not a prover or circuit compiler). Input files must be produced by Noir/Nargo 1.0.0-beta.9 + bb v0.87.0.
-- The verifier internally re-derives the Fiat–Shamir transcript and checks both Sum‑check and Shplonk batch openings over BN254.
-- `std` feature enables file I/O helpers; the core logic is `no_std` + `alloc` friendly.
-- Enable the `trace` feature to print step-by-step internals for cross‑checking with Solidity outputs.
+All `Bytes` arguments must belong to the same `Env`:
 
-## Cargo Features
-- `std`: enables std I/O helpers for convenient loading.
-- `trace`: prints detailed verifier internals (for debugging); off by default.
-- `alloc` (default): required for `no_std` collections.
+- `vk`: the 1,760-byte binary verification key produced by `bb write_vk`.
+- `proof`: the 14,592-byte proof (`PROOF_BYTES`).
+- `public_inputs`: canonical, big-endian 32-byte field elements concatenated in
+  circuit order. The verifier checks their count against the key.
+
+The verifier re-derives the Fiat–Shamir transcript, checks sumcheck, then checks
+Shplemini batch openings with BN254 host operations. The application must select
+a trusted verification key and enforce its own authorization and replay policy.
+
+See the [contract wrapper](https://github.com/NethermindEth/rs-soroban-ultrahonk/tree/main/contracts/rs-soroban-ultrahonk)
+for a complete integration and the
+[verifier provenance](https://github.com/NethermindEth/rs-soroban-ultrahonk/blob/main/crates/ultrahonk-soroban-verifier/VERIFIER_PROVENANCE.md)
+for the supported proof format.
+
+## Cargo features
+
+| Feature | Effect |
+| --- | --- |
+| Default (empty) | `no_std` core with `alloc`; use this for Soroban Wasm. |
+| `std` | Standard-library debug formatting helpers. It does not add file-loading APIs. |
+| `trace` | Diagnostic output when combined with `std`; use `--features std,trace` on the host. |
+
+There is no `alloc` Cargo feature. The core links `alloc` internally.
+
+## Building and testing from the repository
+
+The minimum supported Rust version (MSRV) is **1.92.0**, declared as
+`rust-version = "1.92"` in the manifest. CI checks the extracted crate with
+default and all features on Rust 1.92.0 and builds the Soroban contract that
+embeds it for `wasm32v1-none`. These checks use the committed dependency lockfile;
+dependency updates must continue to pass them. The other CI jobs use stable Rust.
+
+Install the `wasm32v1-none` target and Stellar CLI 28.0.0, then build the example
+contract that embeds the verifier. From the repository root:
+
+```bash
+rustup target add wasm32v1-none
+stellar contract build --package rs-soroban-ultrahonk
+```
+
+Tests need the private workspace helper crate and circuit fixtures. Run them
+from a repository checkout, not from the downloaded crates.io archive:
+
+```bash
+# Requires Nargo 1.0.0-beta.9 and Barretenberg 0.87.0.
+./circuits/scripts/build_all.sh simple_circuit fib_chain small_circuit lookup_heavy range_heavy many_pubs
+cargo test -p ultrahonk_soroban_verifier --locked
+cargo test -p ultrahonk_soroban_verifier --locked --all-features
+```
+
+Fixtures are generated under `circuits/<name>/target/` and are not distributed
+in the crate. Cargo removes the path-only `ultrahonk-test-utils` development
+dependency when packaging; it is not a dependency of applications using this
+library.
+
+## Audit status
+
+The [repository's audit status](https://github.com/NethermindEth/rs-soroban-ultrahonk#audit-status)
+records an OpenZeppelin audit dated **31 August 2026**, covering commit
+[`661db07200f890b1bd9a7349ed787c70a706dd12`](https://github.com/NethermindEth/rs-soroban-ultrahonk/tree/661db07200f890b1bd9a7349ed787c70a706dd12),
+with five Low severity findings and six notes, and no Critical, High, or Medium
+findings. Later commits contain remediation and SDK upgrades; the audited
+revision is not the current release revision. The original auditor report still
+needs to be obtained and added to the repository before the first publication.
+
+## Publishing
+
+Maintainers should follow the repository's
+[publishing guide](https://github.com/NethermindEth/rs-soroban-ultrahonk/blob/main/PUBLISHING.md).
 
 ## References
-- Aztec Packages (barretenberg and tooling): https://github.com/AztecProtocol/aztec-packages
-- Noir language: https://noir-lang.org/
-- Noir compiler (Nargo): https://github.com/noir-lang/noir#nargo
 
----
+- [Barretenberg](https://github.com/AztecProtocol/aztec-packages)
+- [Noir](https://noir-lang.org/)
+- [Nargo](https://github.com/noir-lang/noir#nargo)
 
 ## License
-**MIT** – see [`LICENSE`](LICENSE) for details.
+
+MIT — see [LICENSE](https://github.com/NethermindEth/rs-soroban-ultrahonk/blob/main/crates/ultrahonk-soroban-verifier/LICENSE).

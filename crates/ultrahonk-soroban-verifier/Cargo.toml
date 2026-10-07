@@ -2,10 +2,20 @@
 name = "ultrahonk_soroban_verifier"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.92"
+publish = ["crates-io"]
 
-license     = "MIT"
-description = "Rust verifier for UltraHonk proofs"
-repository  = "https://github.com/yugocabrio/rs-soroban-ultrahonk"
+license = "MIT"
+description = "UltraHonk proof verifier for Soroban smart contracts using the non-ZK UltraKeccak flavor"
+repository = "https://github.com/NethermindEth/rs-soroban-ultrahonk"
+readme = "README.md"
+keywords = ["ultrahonk", "noir", "soroban", "stellar", "cryptography"]
+categories = ["cryptography", "no-std"]
+include = ["/Cargo.toml", "/src/**", "/tests/**", "/README.md", "/LICENSE", "/VERIFIER_PROVENANCE.md"]
+
+[package.metadata.docs.rs]
+all-features = true
+targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 soroban-sdk = { workspace = true }
