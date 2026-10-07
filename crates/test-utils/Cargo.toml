@@ -7,4 +7,3 @@ publish = false
 
 [dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
-ultrahonk_soroban_verifier = { path = "../ultrahonk-soroban-verifier" }

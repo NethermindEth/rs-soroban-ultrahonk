@@ -13,6 +13,24 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  shear:
+    name: Unused dependencies (cargo-shear)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067
+        with:
+          toolchain: stable
+
+      - name: Install cargo-shear
+        run: cargo install cargo-shear --version 1.13.4 --locked
+
+      - name: Check for unused dependencies
+        run: cargo shear
+
   deny:
     name: Dependency policy (cargo-deny)
     runs-on: ubuntu-latest

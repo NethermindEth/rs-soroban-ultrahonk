@@ -841,7 +841,6 @@ checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 name = "identity"
 version = "0.1.0"
 dependencies = [
- "soroban-env-host",
  "soroban-sdk",
  "ultrahonk-test-utils",
  "ultrahonk_soroban_verifier",
@@ -1160,7 +1159,6 @@ dependencies = [
 name = "rs-soroban-ultrahonk"
 version = "0.1.0"
 dependencies = [
- "soroban-env-host",
  "soroban-sdk",
  "ultrahonk-test-utils",
  "ultrahonk_soroban_verifier",
@@ -1742,7 +1740,6 @@ name = "ultrahonk-test-utils"
 version = "0.0.0"
 dependencies = [
  "soroban-sdk",
- "ultrahonk_soroban_verifier",
 ]
 
 [[package]]
