@@ -74,16 +74,6 @@ for a complete integration and the
 [verifier provenance](https://github.com/NethermindEth/rs-soroban-ultrahonk/blob/main/crates/ultrahonk-soroban-verifier/VERIFIER_PROVENANCE.md)
 for the supported proof format.
 
-## Cargo features
-
-| Feature | Effect |
-| --- | --- |
-| Default (empty) | `no_std` core with `alloc`; use this for Soroban Wasm. |
-| `std` | Standard-library debug formatting helpers. It does not add file-loading APIs. |
-| `trace` | Diagnostic output when combined with `std`; use `--features std,trace` on the host. |
-
-There is no `alloc` Cargo feature. The core links `alloc` internally.
-
 ## Building and testing from the repository
 
 The minimum supported Rust version (MSRV) is **1.92.0**, declared as
