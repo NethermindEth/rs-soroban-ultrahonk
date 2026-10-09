@@ -267,7 +267,7 @@ mod tests {
     }
 
     #[test]
-    fn hex_round_trip() {
+    fn to_bytes_round_trip() {
         let env = Env::default();
         let fr = Fr(Bn254Fr::from_bytes(bytesn!(
             &env,
@@ -275,16 +275,11 @@ mod tests {
         )));
         let bytes = fr.to_bytes();
 
-        #[cfg(not(feature = "std"))]
-        use alloc::{format, string::String};
-        #[cfg(feature = "std")]
-        use std::{format, string::String};
-
-        // Convert the last 8 bytes back to hex and compare
-        let mut out_hex = String::from("0x");
-        for b in &bytes[24..32] {
-            out_hex.push_str(&format!("{:02x}", b));
-        }
-        assert_eq!(out_hex, "0x1234567890abcdef");
+        // Big-endian encoding: the value occupies the last 8 bytes.
+        assert_eq!(bytes[..24], [0u8; 24]);
+        assert_eq!(
+            bytes[24..],
+            [0x12, 0x34, 0x56, 0x78, 0x90, 0xab, 0xcd, 0xef]
+        );
     }
 }

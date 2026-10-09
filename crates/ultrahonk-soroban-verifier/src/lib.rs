@@ -42,13 +42,11 @@
 //!
 //! # Features
 //!
-//! Default features are empty; the core supports `no_std` with `alloc`.
+//! Default features are empty; the core is `no_std` and never allocates, so
+//! it needs no global allocator and no `alloc` feature on the Soroban SDK.
 //! `std` enables standard-library debug formatting helpers. `trace` emits
 //! diagnostic output only when `std` is also enabled. Use default features for
 //! Soroban Wasm builds.
-
-#[cfg(not(feature = "std"))]
-extern crate alloc;
 
 pub mod debug;
 pub mod ec;
