@@ -47,9 +47,11 @@ jobs:
 
       - name: Install bb
         run: |
-          curl -L https://raw.githubusercontent.com/AztecProtocol/aztec-packages/refs/heads/next/barretenberg/bbup/install | bash
+          curl -sSfL -o /tmp/bb.tar.gz https://github.com/AztecProtocol/aztec-packages/releases/download/v0.87.0/barretenberg-amd64-linux.tar.gz
+          echo "829b714287085ff4562ba2c64f9c8128463650d833bdd1db5d5a33471dcd67cb  /tmp/bb.tar.gz" | sha256sum -c -
+          mkdir -p "$HOME/.bb"
+          tar -xzf /tmp/bb.tar.gz -C "$HOME/.bb" bb
           echo "$HOME/.bb" >> $GITHUB_PATH
-          $HOME/.bb/bbup -v 0.87.0
 
       - name: Cache cargo directories
         uses: actions/cache@v3
