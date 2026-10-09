@@ -2,6 +2,8 @@
 name = "rs-soroban-ultrahonk"
 version = "0.1.0"
 edition = "2021"
+license.workspace = true
+publish = false
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -13,5 +15,4 @@ ultrahonk_soroban_verifier = { path = "../../crates/ultrahonk-soroban-verifier",
 [dev-dependencies]
 # Enable test helpers for local unit tests
 soroban-sdk = { workspace = true, features = ["testutils", "alloc"] }
-soroban-env-host = "28.0.2"
 ultrahonk-test-utils = { path = "../../crates/test-utils" }

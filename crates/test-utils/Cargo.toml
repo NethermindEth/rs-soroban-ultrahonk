@@ -2,8 +2,8 @@
 name = "ultrahonk-test-utils"
 version = "0.0.0"
 edition = "2021"
+license.workspace = true
 publish = false
 
 [dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
-ultrahonk_soroban_verifier = { path = "../ultrahonk-soroban-verifier" }
