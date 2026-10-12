@@ -107,13 +107,20 @@ library.
 
 ## Audit status
 
-The [repository's audit status](https://github.com/NethermindEth/rs-soroban-ultrahonk#audit-status)
-records an OpenZeppelin audit dated **31 August 2026**, covering commit
-[`661db07200f890b1bd9a7349ed787c70a706dd12`](https://github.com/NethermindEth/rs-soroban-ultrahonk/tree/661db07200f890b1bd9a7349ed787c70a706dd12),
-with five Low severity findings and six notes, and no Critical, High, or Medium
-findings. Later commits contain remediation and SDK upgrades; the audited
-revision is not the current release revision. The original auditor report still
-needs to be obtained and added to the repository before the first publication.
+OpenZeppelin audited the repository at commit
+[`661db07200f890b1bd9a7349ed787c70a706dd12`](https://github.com/NethermindEth/rs-soroban-ultrahonk/tree/661db07200f890b1bd9a7349ed787c70a706dd12)
+between 10 and 28 August 2026 (UltraHonk Verifier Audit, report dated
+**18 September 2026**), with five Low severity findings and six notes, and no
+Critical, High, or Medium findings. All findings are resolved; the fixes are
+present from commit
+[`15703c1`](https://github.com/NethermindEth/rs-soroban-ultrahonk/commit/15703c16a8ec69df27f9e14a9069b3f8d9896f5b)
+onwards and are included in this release. Later commits also contain SDK
+upgrades, so the audited revision is not the release revision.
+
+The full report is committed in the repository:
+[OpenZeppelin UltraHonk Verifier Audit (PDF)](https://github.com/NethermindEth/rs-soroban-ultrahonk/blob/main/audits/2026-09-18-openzeppelin-ultrahonk-verifier-audit.pdf).
+Its checksum is recorded in
+[`audits/README.md`](https://github.com/NethermindEth/rs-soroban-ultrahonk/blob/main/audits/README.md).
 
 ## Publishing
 

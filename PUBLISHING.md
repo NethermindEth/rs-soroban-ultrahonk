@@ -15,8 +15,8 @@ do not upload a crate. Only the command in **Publish** uploads it.
   `crates/ultrahonk-soroban-verifier/Cargo.toml` are the intended release.
 - Obtain coworkers' approval to publish under `ultrahonk_soroban_verifier`.
   Registry availability alone does not establish that approval.
-- Obtain OpenZeppelin's original audit report, verify its source and audited
-  revision, commit it, and link it from the crate README's audit section.
+- Confirm the committed OpenZeppelin audit report in `audits/` matches the
+  checksum in `audits/README.md`, and that both README audit sections link to it.
 - Check [the crate page](https://crates.io/crates/ultrahonk_soroban_verifier).
   For a first release the name must be available; for a later release your
   account must be an owner and the version must not already exist. Hyphens and

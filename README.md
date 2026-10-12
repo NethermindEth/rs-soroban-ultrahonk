@@ -181,11 +181,18 @@ cargo test --workspace --all-features --release
 
 ## Audit status
 
-This project was audited by OpenZeppelin (UltraHonk Verifier Audit, 31 August 2026)
-at commit `661db07`: 5 Low severity findings and 6 notes, with no Critical, High or
+OpenZeppelin audited this repository at commit
+[`661db07`](https://github.com/NethermindEth/rs-soroban-ultrahonk/tree/661db07200f890b1bd9a7349ed787c70a706dd12)
+between 10 and 28 August 2026 (UltraHonk Verifier Audit, report dated
+18 September 2026): 5 Low severity findings and 6 notes, with no Critical, High or
 Medium issues, and no soundness divergence identified in the core verification
-equations. Every finding is accepted, and the remediation follows in the commits
-after that revision.
+equations. Every finding is accepted and resolved; the fixes are present from
+commit [`15703c1`](https://github.com/NethermindEth/rs-soroban-ultrahonk/commit/15703c16a8ec69df27f9e14a9069b3f8d9896f5b)
+onwards, which is on the release line.
+
+The report is committed as
+[`audits/2026-09-18-openzeppelin-ultrahonk-verifier-audit.pdf`](audits/2026-09-18-openzeppelin-ultrahonk-verifier-audit.pdf);
+[`audits/README.md`](audits/README.md) records its checksum and the audited revision.
 
 ## Publishing the verifier library
 
